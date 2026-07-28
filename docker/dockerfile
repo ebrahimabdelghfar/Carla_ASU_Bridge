@@ -1,0 +1,67 @@
+FROM osrf/ros:humble-desktop
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && apt-get install -y \
+    python3-pip \
+    python-is-python3 \
+    python3-colcon-common-extensions \
+    build-essential \
+    bash-completion \
+    ros-humble-tf2-ros \
+    ros-humble-sensor-msgs \
+    ros-humble-nav-msgs \
+    ros-humble-nav2-msgs \
+    ros-humble-geometry-msgs \
+    ros-humble-filters \
+    ros-humble-mrt-cmake-modules \
+    ros-humble-ackermann-msgs \
+    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-fastrtps* \
+    ros-humble-ament-cmake \
+    libpugixml-dev \
+    netcat-openbsd \
+    xdg-user-dirs \
+    libvulkan1 \
+    vulkan-tools \
+    binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+ADD thirdparty_lib/carla/carla-0.9.16-cp310-cp310-linux_x86_64.whl /tmp/
+RUN pip3 install /tmp/carla-0.9.16-cp310-cp310-linux_x86_64.whl \
+    && rm /tmp/carla-0.9.16-cp310-cp310-linux_x86_64.whl
+WORKDIR /micropilot
+RUN pip3 install pygame
+RUN apt-get update && \
+    apt-get install wget -y && \
+    apt-get install nlohmann-json3-dev -y && \
+    rm -rf /var/lib/apt/lists/*
+# Install sudo
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
+
+# Configure ALSA to use a null/dummy sound device to prevent "cannot find card '0'" errors
+RUN printf "pcm.!default {\n    type null\n}\n\nctl.!default {\n    type null\n}\n" > /etc/asound.conf
+
+# Create non-root developer user
+RUN groupadd -g 1000 developer && \
+    useradd -u 1000 -g developer -m -s /bin/bash developer && \
+    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set environment variables for non-root user
+ENV PIP_USER=true
+ENV PATH="/home/developer/.local/bin:${PATH}"
+
+# Source ROS 2 for the developer user
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
+    && echo "export RMW_IMPLEMENTATION=\${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}" >> /root/.bashrc \
+    && echo "if [ -f /usr/share/bash-completion/bash_completion ]; then . /usr/share/bash-completion/bash_completion; fi" >> /root/.bashrc \
+    && echo "if [ -f /micropilot/micropilot_sim/install/ros_apps/setup.bash ]; then source /micropilot/micropilot_sim/install/ros_apps/setup.bash; fi" >> /root/.bashrc
+EXPOSE 1-65535
+# CycloneDDS config so ROS 2 topics are discoverable from other LAN machines
+COPY docker/cyclonedds.xml /micropilot/cyclonedds.xml
+RUN echo "export CYCLONEDDS_URI=file:///micropilot/cyclonedds.xml" >> /root/.bashrc
+
+COPY --chown=developer:developer docker/entrypoint.sh /micropilot/entrypoint.sh
+RUN chmod +x /micropilot/entrypoint.sh
+
+ENTRYPOINT ["/micropilot/entrypoint.sh"]

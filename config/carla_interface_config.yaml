@@ -1,0 +1,718 @@
+# ─── CARLA Connection ────────────────────────────────────────────────────────
+carla:
+  host: "localhost" 
+  port: 2000
+  timeout: 100000.0            # seconds before giving up on server connection
+
+  # Synchronous mode: the node ticks the world at fixed_delta_seconds.
+  # Set to false to run in asynchronous mode (world ticks on its own clock).
+  synchronous_mode: true
+  # Applied in BOTH sync and async. In async this is the "async fixed step":
+  fixed_delta_seconds: 0.05    # 20 Hz world physics step
+
+  # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
+  # Requires pygame and a display.
+  open_manual_control: true
+
+  # manual_control display tuning. The manual_control view renders a camera on
+  # the server every world tick; at full size that steals GPU from the telemetry
+  # cameras + LiDAR and drops the LiDAR below its 10 Hz rotation rate. A smaller
+  # window and a capped render rate keep the monitoring view usable while leaving
+  # the simulation headroom.
+  manual_control:
+    res: "960x540"        # pygame window / display-camera resolution (WIDTHxHEIGHT)
+    render_rate: 20.0     # Hz the display camera renders at (<=0 = every tick)
+
+  # When true, each enabled camera AND the LiDAR is captured by its own dedicated
+  # CARLA client (own TCP stream + io_context) instead of sharing the main client.
+  # Parallelizes streaming and holds per-sensor Hz with many sensors enabled.
+  dedicated_clients:
+    enabled: true
+
+# ─── World / Town ────────────────────────────────────────────────────────────
+world:
+  # CARLA built-in maps: Town01 … Town07, Town10HD, Town12, Town13, Town15 Aramco_Map exhibition_map abou_dhabi_Map dubai_map
+  town: "Town10HD"
+  # Spawn point configuration.
+  # To spawn at specific coordinates:
+  # spawn_point_coords: { x: 0.0, y: 0.0, z: 0.5, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+  # Or use an index into world.get_map().get_spawn_points().
+  # Use -1 for a random spawn point.
+  spawn_point_index: 0
+
+# ─── Dynamic Pedestrians ─────────────────────────────────────────────────────
+pedestrians:
+  enabled: true
+  count: 50                    # Number of pedestrians to spawn
+  blueprints:                  # List of walker types to spawn (randomly distributed)
+    - "walker.pedestrian.0001"
+    - "walker.pedestrian.0002"
+    - "walker.pedestrian.0004"
+  speed: 1.2                  # Maximum walking speed in m/s
+
+# ─── Dynamic NPC Vehicles ────────────────────────────────────────────────────
+npc_vehicles:
+  enabled: true
+  count: 10                    # Number of NPC vehicles to spawn
+  blueprints:                  # Vehicle blueprint filters (randomly distributed)
+    - "vehicle.*"
+  autopilot: true               # Enable Traffic Manager autopilot for NPC vehicles
+  tm_port: 8000                 # Traffic Manager port (default CARLA TM port)
+  # Speed control (choose ONE):
+  #   speed_difference_pct: % slower than road speed limit (0 = match limit, 50 = half speed, -20 = 20% faster)
+  #   max_speed_kmh: absolute cap in km/h (overrides pct when > 0). Can cause jerky movement.
+  speed_difference_pct: 20.0     # Match road speed limit (smooth, TM-native)
+  distance_to_leading_vehicle: 5.0  # Min distance (meters) to vehicle ahead
+  auto_lane_change: true       # Allow automatic lane changes
+  # Hybrid physics: NPCs beyond hybrid_physics_radius from the hero (ego) stop
+  # running full PhysX and are dead-reckoned instead. Isolates NPC physics cost
+  # from the ego/sensor budget so a large NPC count doesn't drag server FPS.
+  hybrid_physics: true          # Enable TM hybrid physics mode
+  hybrid_physics_radius: 80.0   # Full physics only within this radius (m) of hero
+
+# ─── Dynamic Props ───────────────────────────────────────────────────────────
+dynamic_props:
+  enabled: false
+  count: 30                    # Total number of props to spawn
+  max_distance: 10.0           # Maximum radius from the origin (0,0,0) in meters
+  min_distance_from_ego: 3.0   # Minimum distance from ego vehicle to prevent collisions
+  prop_to_prop_distance: 2.5   # Minimum distance between spawned props to prevent physics overlap
+  spawn_on_roads: true         # Only spawn props on valid roads/lanes (avoids buildings/sidewalks)
+  spawn_height: 0.5            # Z-axis drop height to prevent ground clipping
+  blueprints:                  # List of prop types to spawn (randomly distributed)
+    - "static.prop.constructioncone"
+    - "static.prop.box*"
+
+
+# ─── Ego Vehicle ─────────────────────────────────────────────────────────────
+vehicle:
+  # CARLA blueprint filter string (partial match allowed, e.g. "vehicle.*")
+  # m1: "vehicle.micropolis.upolice_m1"
+  # m2: "vehicle.micropolis.upolice_m2v2"
+  blueprint: "vehicle.micropolis.upolice_m02p"
+
+  # role_name is used as the ROS actor name (visible in /carla/<role_name>/...)
+  role_name: "hero"
+
+  # Actor generation filter: "1", "2", or "All"
+  generation: "2"
+
+  # null → random recommended color; or "R,G,B" string e.g. "255,0,0"
+  color: null
+
+  # ── Transmission ─────────────────────────────────────────────────────
+  transmission:
+    # "automatic" sets use_gear_autobox=True  in VehiclePhysicsControl.
+    # "manual"    sets use_gear_autobox=False (gear must be commanded via
+    #             VehicleControl.manual_gear_shift = True and .gear = N).
+    type: "automatic"      # "automatic" | "manual"
+
+    # Seconds the gearbox takes to change gears (both modes)
+    gear_switch_time: 0.0
+
+    # Clutch strength (kg·m²/s) — affects engine braking at lift-off
+    clutch_strength: 100000.0
+
+    # Fixed ratio from transmission output shaft to wheels
+    final_ratio: 1.0
+
+    # Forward gear table.  Each entry: ratio, down_ratio, up_ratio.
+    # down_ratio / up_ratio are fractions of max_rpm for auto-shift.
+    # Leave as [] to keep the blueprint defaults.
+    forward_gears:
+      - { ratio: 1.00, down_ratio: 0.00, up_ratio: 0.00 }   # 1st
+
+  # ── Drive Mode ───────────────────────────────────────────────────────
+  # CARLA does not have a single "drive mode" property.  Drive mode is
+  # implemented by assigning near-zero tire_friction to the unpowered axle.
+  #   FWD → rear  wheels: tire_friction ≈ 0.1
+  #   RWD → front wheels: tire_friction ≈ 0.1
+  #   AWD → all four wheels equal (uses physics.wheels values as-is)
+  # vehicle.py reads this field and auto-adjusts wheel friction accordingly.
+  drive_mode: "AWD"     # "FWD" | "RWD" | "AWD"
+
+  # ── Engine & Physics ─────────────────────────────────────────────────
+  physics:
+    # Set to false to skip apply_physics_control() and keep blueprint defaults.
+    enabled: true
+
+    mass: 400.0              # kg
+    drag_coefficient: 0.1     # aerodynamic Cd
+
+    # Whether to override the blueprint's default center of mass
+    override_center_of_mass: false
+    # Centre of mass offset from actor origin (metres, CARLA frame)
+    center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
+
+    max_rpm: 300.0           # peak engine RPM
+    moi: 0.01                  # engine moment of inertia (kg·m²)
+
+    damping_rate_full_throttle:                   0.15
+    damping_rate_zero_throttle_clutch_engaged:    0.0
+    damping_rate_zero_throttle_clutch_disengaged: 0.0
+
+    # Engine torque curve: [[RPM, Nm], ...]
+    torque_curve:
+      - [0.0,   200.0]
+      - [738.5, 200.0]
+      - [853.0, 200.0]
+
+    # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
+    # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
+    steering_curve:
+      - [0.0,   1.0]
+      - [60.0,  1.0]
+      - [120.0, 1.0]
+
+    # Enable PhysX sweep-based wheel collision (more realistic, slower)
+    use_sweep_wheel_collision: false
+
+    # Per-wheel physics overrides.
+    # Wheel index convention: 0=FL, 1=FR, 2=RL, 3=RR.
+    # Set 'drive_mode' above to auto-apply FWD/RWD friction differentiation.
+    wheels:
+      - position: "FL"                 # front-left
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0          # degrees
+        radius: 28.0                   # centimetres
+        max_brake_torque: 300.0       # N·m
+        max_handbrake_torque: 500.0   # N·m
+      - position: "FR"                 # front-right
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0
+        radius: 28.0
+        max_brake_torque: 300.0
+        max_handbrake_torque: 500.0
+      - position: "RL"                 # rear-left
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 0.0
+        radius: 28.0
+        max_brake_torque: 300.0
+        max_handbrake_torque: 500.0
+      - position: "RR"                 # rear-right
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 0.0
+        radius: 28.0
+        max_brake_torque: 300.0
+        max_handbrake_torque: 500.0
+
+# ─── GPS World Origin ─────────────────────────────────────────────────────────
+# The CARLA world (0, 0, 0) is mapped to this geographic coordinate.
+# Used by the noise model's ENU↔WGS-84 reprojection.
+global_coordinates:
+  latitude:  25.08032438870757      # degrees  (example: central London)
+  longitude: 55.39144931848923
+  altitude:  11.0         # metres above sea level
+
+# ─── GPS Noise Model (identical to Micropolis.Telemetry) ─────────────────────
+# Applied additively on top of CARLA GNSS output (Gauss-Markov + white noise).
+gps:
+  # Update rate for the GPS ROS 2 publisher (Hz)
+  update_rate: 50.0
+  qos_reliability: "BEST_EFFORT"
+
+  # Random-walk bias drift
+  gps_xy_random_walk:   0.0        # (m/s)/sqrt(Hz)
+  gps_z_random_walk:    0.0        # (m/s)/sqrt(Hz)
+  gps_correlation_time: 60.0       # s
+
+  # Position white-noise density
+  gps_xy_noise_density: 0.000000     # m/sqrt(Hz)
+  gps_z_noise_density:  0.000000     # m/sqrt(Hz)
+
+  # Velocity white-noise density
+  gps_vxy_noise_density: 0.000000       # (m/s)/sqrt(Hz)
+  gps_vz_noise_density:  0.000000       # (m/s)/sqrt(Hz)
+
+  # CARLA GNSS sensor mount position relative to vehicle
+  spawn_point: { x: 0.0, y: 0.0, z: 0.0, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+  # Optional CARLA blueprint noise attributes (applied in addition to the model above)
+  noise_alt_stddev: 0.0
+  noise_lat_stddev: 0.0
+  noise_lon_stddev: 0.0
+
+# ─── Battery Simulation ───────────────────────────────────────────────────────
+# Software model — no CARLA sensor needed. Driven by vehicle speed.
+# Parameters are identical to Micropolis.Telemetry LinearBatteryPlugin model.
+battery:
+  # Electrical model (mirrors Gazebo LinearBatteryPlugin)
+  voltage: 48.0                           # V  - nominal open-circuit voltage
+  open_circuit_voltage_constant_coef: 12.6 # V  - voltage at 100 % charge
+  open_circuit_voltage_linear_coef:  -2.8  # V  - additional voltage drop at 0 % charge
+  capacity: 50.0                           # Ah - total charge capacity
+  initial_charge: 50.0                     # Ah - charge at simulation start
+  resistance: 0.061                        # Ω  - internal resistance
+  smooth_current_tau: 2.0                  # s  - low-pass filter τ for current
+
+  # Power consumers
+  power_load: 10000.0                        # W  - constant baseline power draw
+  # consumption_mode:
+  #   "constant"       - only 'power_load' regardless of motion
+  #   "velocity_based" - baseline + extra power proportional to speed
+  consumption_mode: "constant"
+  power_per_speed: 15.0                    # W / (m/s)
+
+  # Lifecycle
+  start_draining: true       # start consuming power immediately at sim start
+  enable_recharge: true      # allow recharging via ROS 2 service
+  charging_time: 0.1         # hours to fully recharge from 0 %
+
+  update_rate: 10.0          # Hz for BatteryState publisher
+  qos_reliability: "BEST_EFFORT"
+
+# ─── IMU Sensor ───────────────────────────────────────────────────────────────
+imu:
+  enabled: true
+  spawn_point: { x: 0.0, y: 0.0, z: 0.0, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+  # CARLA IMU blueprint noise attributes
+  noise_accel_stddev_x: 0.0
+  noise_accel_stddev_y: 0.0
+  noise_accel_stddev_z: 0.0
+  noise_gyro_stddev_x:  0.0
+  noise_gyro_stddev_y:  0.0
+  noise_gyro_stddev_z:  0.0
+  noise_gyro_bias_x:    0.0
+  noise_gyro_bias_y:    0.0
+  noise_gyro_bias_z:    0.0
+
+  frame_id: "imu_link"
+
+  # Publish rate (Hz) for IMU ROS 2 publisher
+  update_rate: 50.0
+  qos_reliability: "BEST_EFFORT"
+
+# ─── Odometry ──────────────────────────────────────────────────────────
+# Ground-truth odometry computed from CARLA vehicle transform and velocity.
+# No sensor is spawned — data is read directly from the actor each timer tick.
+odometry:
+  enabled: true
+
+  # ROS 2 frame_id for the nav_msgs/Odometry message header.
+  # Usually "odom" (world-fixed frame origin at vehicle spawn location).
+  frame_id: "map"
+
+  # ROS 2 child_frame_id — the moving body frame
+  child_frame_id: "base_link"
+
+  # Publish rate (Hz).  20 Hz is sufficient for most planning stacks.
+  update_rate: 50.0
+  qos_reliability: "BEST_EFFORT"
+
+  # When true, also broadcast the odom→base_link TF transform via TF2.
+  # Requires tf2_ros to be installed.  Set to false if your stack provides TF externally.
+  broadcast_tf: true
+
+  # Odometry calculation mode:
+  #   "standard" - Standard odometry calculation from CARLA API transform
+  #   "gnss"     - Odometry derived from GNSS ENU offset relative to global_coordinates origin
+  mode: "gnss"
+
+  # Only applies when mode = "gnss".
+  # true  → position from the noisy GPS fix (Gauss-Markov bias + white noise),
+  #          i.e. the same signal published on /feedback/gps — realistic autopilot view.
+  # false → position from the ground-truth GPS fix (perfect CARLA GNSS reprojected
+  #          through the user origin, no noise). Useful for reference / debugging.
+  gnss_use_noise: false
+
+  # Gaussian noise configuration:
+  #   enabled: true/false to turn noise on/off
+  #   pos_stddev_x/y/z: standard deviation for position (meters)
+  #   ori_stddev_roll/pitch/yaw: standard deviation for Euler angles (degrees)
+  #   vel_stddev_x/y/z: standard deviation for linear velocity (m/s)
+  #   ang_vel_stddev_x/y/z: standard deviation for angular velocity (degrees/s)
+  noise:
+    enabled: false
+    pos_stddev_x: 0.05
+    pos_stddev_y: 0.05
+    pos_stddev_z: 0.01
+    ori_stddev_roll: 0.1
+    ori_stddev_pitch: 0.1
+    ori_stddev_yaw: 0.5
+    vel_stddev_x: 0.02
+    vel_stddev_y: 0.02
+    vel_stddev_z: 0.01
+    ang_vel_stddev_x: 0.1
+    ang_vel_stddev_y: 0.1
+    ang_vel_stddev_z: 0.1
+
+# ─── TF Frames ───────────────────────────────────────────────────────────────
+tf:
+  # Broadcast static base_link → sensor frames from spawn_point config.
+  broadcast_sensor_tf: true
+
+  # Parent frame for sensor transforms. Defaults to odometry child_frame_id.
+  base_frame_id: "base_link"
+
+# ─── Camera Sensors ───────────────────────────────────────────────────────────
+# Each entry defines one camera actor spawned and attached to the ego vehicle.
+# All cameras run concurrently; each has its own publish thread.
+#
+# Supported CARLA camera blueprint IDs:
+#   sensor.camera.rgb              - standard RGB camera
+#   sensor.camera.depth            - depth map (float32 metres)
+#   sensor.camera.semantic_segmentation
+#   sensor.camera.instance_segmentation
+#   sensor.camera.optical_flow
+#   sensor.camera.normals
+cameras:
+  # Back camera (rear‑facing)
+  - name: "bm_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    type: "sensor.camera.rgb"
+    spawn_point: { x: -0.655803, y: 0.0, z: 0.682332, roll: -0.00, pitch: 0.00, yaw: -180.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "bm_camera"
+    topic_rgb:         "/bm_camera/raw_images"
+    topic_camera_info: "/bm_camera/camera_info"
+  # Back‑left camera
+  - name: "br_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.429985, y: 0.420937, z: 0.795485, roll: -0.00, pitch: 0.00, yaw: 110.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "br_camera"
+    topic_rgb:         "/br_camera/raw_images"
+    topic_camera_info: "/br_camera/camera_info"  
+  # Back‑right camera
+  - name: "bl_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT" 
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.429985, y: -0.420937, z: 0.795485, roll: -0.00, pitch: 0.00, yaw: -110.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "bl_camera"
+    topic_rgb:         "/bl_camera/raw_images"
+    topic_camera_info: "/bl_camera/camera_info"
+  # Front camera (forward‑facing)
+  - name: "fm_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.67866, y: 0.000000, z: 0.665524, roll: -0.00, pitch: 0.00, yaw: -0.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "fm_camera"
+    topic_rgb:         "/fm_camera/raw_images"
+    topic_camera_info: "/fm_camera/camera_info"
+  # Front‑left camera
+  - name: "fr_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.588435, y: 0.272428, z: 0.810697, roll: -0.00, pitch: -15.00, yaw: 30.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "fr_camera"
+    topic_rgb:         "/fr_camera/raw_images"
+    topic_camera_info: "/fr_camera/camera_info"
+  # Front‑right camera
+  - name: "fl_camera"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.589702, y: -0.271414, z: 0.811094, roll: 0.00, pitch: -15.00, yaw: -30.00 }
+    image_size_x: 1440
+    image_size_y: 928
+    fov: 75.0
+    update_rate: 10.0
+    frame_id: "fl_camera"
+    topic_rgb:         "/fl_camera/raw_images"
+    topic_camera_info: "/fl_camera/camera_info"
+
+  
+
+# ─── Third-Person Chase View ──────────────────────────────────────────────────
+# A single RGB camera attached behind/above the ego vehicle, framed like the
+# manual_control chase view (its default view: Location(x=-2·bound_x, z=2·bound_z),
+# Rotation(pitch=8)). Streamed as its own ROS 2 image topic and, when
+# dedicated_clients.enabled is true, captured by its own CARLA client just like
+# the other cameras/LiDARs. Toggle with `enabled`; tune `topic_rgb`/`update_rate`.
+third_person_view:
+  enabled: false
+  qos_reliability: "BEST_EFFORT"
+  type: "sensor.camera.rgb"
+  # Behind (-x) and above (+z) the vehicle, pitched down to look at it.
+  spawn_point: { x: -5.5, y: 0.0, z: 1.3, roll: 0.0, pitch: 8.0, yaw: 0.0 }
+  image_size_x: 960
+  image_size_y: 540
+  fov: 90.0
+  update_rate: 10.0
+  frame_id: "third_person_view"
+  topic_rgb:         "/third_person_view/raw_images"
+  topic_camera_info: "/third_person_view/camera_info"
+
+# ─── LiDAR Sensors ────────────────────────────────────────────────────────────
+# Each entry defines one LiDAR actor spawned and attached to the ego vehicle.
+# Multiple LiDARs are supported; each publishes to its own PointCloud2 topic.
+#
+# lidar_type options:
+#   "rotary"       → sensor.lidar.ray_cast
+#                    Standard spinning LiDAR. Supports dropoff/atmospheric noise.
+#   "solid_state"  → sensor.lidar.ray_cast_semantic
+#                    Non-rotating flash LiDAR simulation. Uses horizontal_fov /
+#                    vertical_fov for a cone-shaped FOV. Adds semantic labels.
+#                    Dropoff parameters are not applicable and will be ignored.
+#   "gpu"          → sensor.lidar.ray_cast_gpu   (custom Carla_Micropolis sensor)
+#                    GPU depth-rasterization instead of CPU PhysX ray traces —
+#                    real-time at high point counts. REQUIRES a CarlaUE4 built
+#                    with the GPU lidar sensor (`make CarlaUE4`); a packaged
+#                    build without it will fail to find the blueprint. Same
+#                    params + output (XYZI) as rotary; dropoff/atmosphere attrs
+#                    are accepted if the sensor implements them. Extra:
+#                    `use_compute: true` selects the GPU compute-shader path.
+lidars:
+  - name: "top_lidar"
+    enabled: true
+    qos_reliability: "BEST_EFFORT"
+    lidar_type: "rotary"     # "rotary" | "solid_state" | "gpu"
+    use_compute: false        # gpu only: true = GPU compute-shader sampling path
+
+    spawn_point: { x: 0.0, y: 0.0, z: 2.4, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    # ── Rotary LiDAR parameters (sensor.lidar.ray_cast) ──────────────────
+    channels: 128                  # Number of laser beams
+    range: 150.0                   # Maximum detection range (m)
+    points_per_second: 4621440      # Total laser shots per second across all channels
+    rotation_frequency: 0.0       # Rotations per second (Hz) keep it 0 to be adaptive to server fps
+    upper_fov: 22.5               # Highest laser beam angle (degrees, positive = up)
+    lower_fov: -22.5              # Lowest  laser beam angle (degrees, negative = down)
+
+    # Realistic noise / atmospheric effects (rotary only)
+    atmosphere_attenuation_rate: 0.02   # Exponential intensity falloff per metre
+    dropoff_general_rate: 0.25           # Probability to drop a point at any range
+    dropoff_intensity_limit: 0.25         # Points with intensity below this may drop
+    dropoff_zero_intensity: 0.25          # Probability of dropping zero-intensity points
+
+    # ── Solid-state LiDAR parameters (sensor.lidar.ray_cast_semantic) ────
+    # Uncomment and set lidar_type: "solid_state" to use these instead:
+    # horizontal_fov: 120.0        # FOV width  (degrees)
+    # vertical_fov:   30.0         # FOV height (degrees)
+    # channels: 128
+    # range: 100.0
+    # points_per_second: 200000
+
+    # Target publish rate (Hz).
+    update_rate: 10.0
+
+    # ROS 2 frame ID used in PointCloud2 header
+    frame_id: "seyond"
+
+    # ROS 2 topic suffix (relative to namespace or absolute)
+    topic_point_cloud: "/iv_points_fusion"
+
+  - name: "front_lidar"
+    enabled: false
+    qos_reliability: "BEST_EFFORT"
+    lidar_type: "solid_state"
+
+    spawn_point: { x: 2.0, y: 0.0, z: 1.2, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    # Solid-state cone parameters
+    horizontal_fov: 120.0
+    vertical_fov:   30.0
+    channels: 128
+    range: 100.0
+    points_per_second: 200000
+
+    update_rate: 10.0
+    frame_id: "lidar_front"
+    topic_point_cloud: "lidar/front/points"
+
+  # ── GPU depth-camera LiDAR (lidar_type: "depth") ─────────────────────
+  # A ring of sensor.camera.depth cameras (rendered on the GPU, NO CPU
+  # raycasting) reprojected into one PointCloud2. Real-time + async, does not
+  # touch the RGB cameras. Different sensor model than ray_cast: a reprojected
+  # depth raster, so NO intensity and NO per-beam dropoff/atmosphere noise —
+  # geometry only. Works on a stock (packaged) CARLA; no server rebuild needed.
+  # Enable this and disable top_lidar to swap the 360° cloud on /iv_points_fusion.
+  - name: "depth_lidar"
+    enabled: false
+    qos_reliability: "BEST_EFFORT"
+    lidar_type: "depth"
+
+    spawn_point: { x: 0.0, y: 0.0, z: 2.4, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    num_cameras: 6          # depth cameras around the ring (more = smoother 360°)
+    image_size_x: 400       # per-camera width  (points ≈ W*H*num/stride²)
+    image_size_y: 300       # per-camera height (aspect sets vertical coverage)
+    fov: 0.0                # per-camera horizontal FOV (deg); 0 = auto (360/num + overlap)
+    range: 100.0            # max depth kept (m)
+    min_range: 0.5          # min depth kept (m)
+    point_stride: 2         # pixel decimation (1 = every pixel, higher = sparser/faster)
+
+    update_rate: 10.0
+    frame_id: "lidar"
+    topic_point_cloud: "/iv_points_fusion"
+
+# ─── Vehicle Telemetry (feedback) ────────────────────────────────────────────
+# Rate for the motors / steering_angles / vehicle_state / speed / autonomous_mode
+# publishers. These read the vehicle over blocking CARLA RPCs; each RPC on a
+# loaded server can cost tens of ms, so this runs on its own thread (off the
+# control loop and the ROS executor) at the rate below. Lower it if the CARLA
+# server RPC thread is saturated (symptom: high node.timer / laggy control).
+telemetry:
+  update_rate: 10.0
+  qos_reliability: "BEST_EFFORT"
+
+# ─── Ground-Truth Bounding Boxes ─────────────────────────────────────────────
+# 3D boxes of every world actor (vehicles / cyclists / pedestrians / signs),
+# read straight from CARLA and expressed in the ego base_link frame.
+ground_truth_boxes:
+  enabled: true
+
+  # ROS 2 frame_id for the message header (boxes are ego-relative).
+  frame_id: "base_link"
+
+  # Publisher rate (Hz).
+  update_rate: 10.0
+  qos_reliability: "BEST_EFFORT"
+
+  # Detection window — mimics a LiDAR's field of view. Only boxes whose
+  # ego-relative center falls inside the window are published. The ego box is
+  # always published regardless. Leave defaults to publish everything.
+  range_window:
+    # Radial XY distance from the ego (meters).
+    max_range: 80.0        # upper limit; <= 0 disables (unlimited range)
+    min_range: 0.0         # blind zone around the ego; 0 = no inner cutoff
+
+    # Horizontal field of view (degrees), centered on the ego +x (forward).
+    # 360 = full surround (no angular gating). 90 = ±45° forward cone.
+    horizontal_fov: 360.0
+
+    # Vertical band relative to the ego base_link (meters). Applied only when
+    # z_max > z_min; leave both at 0.0 to disable vertical gating.
+    z_min: 0.0
+    z_max: 0.0
+
+# ─── Control Input Configuration ─────────────────────────────────────────────
+# Scale factors for converting ICD commands → CARLA VehicleControl.
+control:
+  # Control source mode: "vehicle_interface" or "ackermann_drive"
+  source: "vehicle_interface"
+  
+  # PID for linear velocity (m/s) tracking
+  speed_pid:
+    kp: 10.0
+    ki: 0.1
+    kd: 0.05
+    max_integral: 1.0
+    max_output: 1.0
+
+  # PID for steering angle (rad) tracking
+  steer_pid:
+    kp: 10.0
+    ki: 0.0
+    kd: 0.0
+    max_integral: 0.0
+    max_output: 1.0
+
+  # PID for steering angle velocity (rad/s) tracking
+  steer_vel_pid:
+    kp: 0.0
+    ki: 0.0
+    kd: 0.0
+    max_integral: 1.0
+    max_output: 1.0
+
+  # PID for wheel RPM tracking
+  rpm_pid:
+    kp: 0.05
+    ki: 0.0
+    kd: 0.0
+    max_integral: 1.0
+    max_output: 1.0
+
+  # RPM value that maps to full throttle (1.0) in CARLA.
+  #   throttle = |velocity_rpm| / max_rpm    (clamped to [0, 1])
+  max_rpm: 500.0
+
+  # Max steering angle (degrees) that maps to full steer (±1.0) in CARLA.
+  #   carla_steer = -steering_angle_deg / max_steer_deg   (+ left → − right)
+  max_steer_deg: 16.0
+  max_velocity_kmh: 30.0
+
+
+# ─── ROS 2 Configuration ──────────────────────────────────────────────────────
+ros2:
+  # Base namespace prepended to all relative topics.
+  # With namespace "sim": "feedback/gps" becomes "/sim/feedback/gps".
+  namespace: "sim"
+
+  # ── Topic names (relative or absolute) ────────────────────────────────────
+  topics:
+    # ── Feedback outputs (publications) ─────────────────────────────────────
+    # GPS fix:        /sim/feedback/gps               sensor_msgs/NavSatFix
+    feedback_gps:              "feedback/gps"
+    # GPS velocity:   /sim/feedback/gps_vel           geometry_msgs/TwistStamped
+    feedback_gps_vel:          "feedback/gps_vel"
+    # Battery state:  /sim/feedback/battery/state     sensor_msgs/BatteryState
+    feedback_battery_state:    "feedback/battery/state"
+    # IMU:            /sim/feedback/imu               sensor_msgs/Imu
+    feedback_imu:              "feedback/imu"
+    # Speed:          /sim/feedback/speed             std_msgs/Float32   (m/s)
+    feedback_speed:            "feedback/speed"
+    # Steering echo:  /sim/feedback/steering_angle    std_msgs/Float32   (degrees)
+    feedback_steering_angle:   "feedback/steering_angle"
+    # 4-wheel joints: /sim/feedback/steering_angles   sensor_msgs/JointState
+    feedback_steering_angles:  "feedback/steering_angles"
+    # Motors feedback: /sim/feedback/motors           std_msgs/String (JSON)
+    feedback_motors:           "feedback/motors"
+    # Autonomous mode: /sim/feedback/autonomous_mode  std_msgs/Bool
+    #   true  = autonomous control active
+    #   false = user pressed 'b' in the GUI to force manual control
+    feedback_autonomous_mode:  "feedback/autonomous_mode"
+    # Odometry:       /sim/odom                       nav_msgs/Odometry
+    # NOTE: ICD defines this as /sim/odom (not under feedback/)
+    odom:                      "odom"
+    # Ground-truth boxes: /sim/ground_truth/boxes  visualization_msgs/MarkerArray
+    ground_truth_boxes:        "ground_truth/boxes"
+
+    # ── Control inputs (subscriptions) ──────────────────────────────────────
+    # Wheel velocity: /sim/control/velocity_rpm       std_msgs/Float32   (RPM)
+    control_velocity_rpm:        "control/velocity_rpm"
+    # Steering cmd:   /sim/control/steering_angle_deg std_msgs/Float32   (degrees)
+    control_steering_angle_deg:  "control/steering_angle_deg"
+    # Emergency brake:/sim/control/brake              std_msgs/Bool
+    control_brake:               "control/brake"
+    # Ackermann drive: /sim/control/ackermann_drive   ackermann_msgs/AckermannDrive
+    control_ackermann:           "control/ackermann_drive"
+    # Spawn point is always /sim/spawn_point (absolute, hardcoded per ICD)
+
+  # ── Services ──────────────────────────────────────────────────────────────
+  services:
+    # Battery control (std_srvs/Trigger)
+    start_drain:   "control/battery/start_drain"
+    stop_drain:    "control/battery/stop_drain"
+    start_charge:  "control/battery/start_charge"
+    stop_charge:   "control/battery/stop_charge"
+
+    # Lights control (std_srvs/SetBool)
+    high_beams:    "control/lights/high_beams"
+    brake_lights:  "control/lights/brake_lights"
+    low_beams:     "control/lights/low_beams"
+    left_blinker:  "control/lights/left_blinker"
+    right_blinker: "control/lights/right_blinker"
+    siren:         "control/lights/siren"
+    set_steering_mode: "control/set_steering_mode"
+    force_manual_control: "control/force_manual_control"

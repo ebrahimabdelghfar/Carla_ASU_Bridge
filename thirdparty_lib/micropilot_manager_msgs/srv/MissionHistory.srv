@@ -1,0 +1,20 @@
+# Query mission history
+# If mission_id is empty, returns all history entries (max 3).
+# If mission_id is set, returns only the matching entry (or empty).
+string mission_id
+---
+bool    success
+string  message
+string[] mission_ids
+uint8[]  statuses
+string[] status_names
+float64[] completion_percentages
+float64[] distances_traveled
+float64[] total_distances
+float64[] elapsed_times
+float64[] wall_starts
+float64[] wall_ends
+uint32[]  total_laps
+uint32[]  goals_visited
+uint32[]  total_goals
+float64[] battery_socs

@@ -1,0 +1,8 @@
+# IDD §10.7 offroad / §10.8 urban — S04: /safety/trigger_fault_behaviour (server: behaviour planner)
+string faulted_component        # Node name
+string faulted_sub_component    # Component within node (optional)
+string fault_description
+uint8 severity
+---
+bool accepted
+string message

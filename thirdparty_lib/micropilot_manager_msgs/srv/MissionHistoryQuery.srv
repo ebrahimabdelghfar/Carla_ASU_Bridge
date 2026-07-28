@@ -1,0 +1,10 @@
+# GUI → HMI Bridge: query mission history.
+# If mission_id is empty, returns all history entries (max 3).
+# Bridge forwards to system manager's MissionHistory service,
+# returning results as JSON in the `data` field.
+
+string mission_id
+---
+bool   success
+string message
+string data

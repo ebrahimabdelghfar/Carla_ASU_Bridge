@@ -1,0 +1,97 @@
+# GPS World Origin Configuration
+# These coordinates define the (0, 0, 0) point of the simulation world.
+# The GPS sensor converts ENU positions into real latitude/longitude using this origin.
+global_coordinates:
+  latitude: 51.5074      # degrees  (example: central London)
+  longitude: -0.1278     # degrees
+  altitude: 11.0         # meters above sea level
+
+# GPS sensor noise configuration
+gps:
+  # Random-walk bias drift
+  gps_xy_random_walk: 2.0        # (m/s)/sqrt(Hz)
+  gps_z_random_walk: 4.0         # (m/s)/sqrt(Hz)
+  gps_correlation_time: 60.0     # s
+
+  # Position white noise density
+  gps_xy_noise_density: 0.0002   # m/sqrt(Hz)
+  gps_z_noise_density: 0.0004    # m/sqrt(Hz)
+
+  # Velocity white noise density
+  gps_vxy_noise_density: 0.2     # (m/s)/sqrt(Hz)
+  gps_vz_noise_density: 0.4      # (m/s)/sqrt(Hz)
+
+# Battery configuration
+battery:
+  # --- Electrical model (mirrors Gazebo LinearBatteryPlugin) ---
+  voltage: 12.6                            # V  - nominal open-circuit voltage
+  open_circuit_voltage_constant_coef: 12.6 # V  - voltage at 100 % charge
+  open_circuit_voltage_linear_coef: -2.8   # V  - additional voltage drop at 0 % charge
+  capacity: 10.0                           # Ah - total charge capacity
+  initial_charge: 10.0                     # Ah - charge at simulation start (10 = full)
+  resistance: 0.061                        # ohm - internal resistance
+  smooth_current_tau: 2.0                  # s  - low-pass filter time-constant for current
+
+  # --- Power consumers ---
+  power_load: 500.0                        # W  - constant baseline power draw (high for visible drain)
+
+  # Consumption mode:
+  #   "constant"       - only 'power_load' is consumed regardless of motion
+  #   "velocity_based" - baseline + extra power proportional to robot speed
+  #                      (mimics Gazebo Thruster plugin's BatteryPowerLoad component)
+  consumption_mode: "constant"
+  power_per_speed: 15.0                    # W / (m/s) - extra draw in velocity_based mode
+
+  # --- Lifecycle ---
+  start_draining: true        # start consuming power immediately at sim start
+  enable_recharge: true       # allow recharging via Start Charge button
+  charging_time: 0.1          # hours to fully recharge from 0% (6 minutes = fast for testing)
+
+# RTX lidar configuration
+lidar:
+  enabled: true
+  # Prim path to use for lidar. If this prim does not exist and
+  # spawn_from_config is true, TelemetryLidar will create it.
+  prim_path: "lidar/sensor"
+  # Create the sensor from an Isaac Sim preset when prim_path is missing.
+  spawn_from_config: true
+  # Preset name used by IsaacSensorCreateRtxLidar (not a full file path).
+  # Example presets: Example_Rotary, OS1_REV6_32ch20hz512res
+  config_file_name: "OS2_REV7_128ch20hz512res"
+  # Physical preset JSON files exist under:
+  # isaac_env/lib/python3.11/site-packages/isaacsim/exts/isaacsim.sensors.rtx/data/lidar_configs/
+  frame_id: "lidar"
+  annotator: "IsaacCreateRTXLidarScanBuffer"
+  update_rate: 250.0
+
+# Robot auto-detection configuration
+robot_detection:
+  # When enabled, the UI scans the stage for these root prim names and picks
+  # the matching robot asset automatically.
+  enabled: true
+  candidate_names:
+    - "M02P"
+    - "M02P_NoCover"
+    - "M01P"
+    - "M02P_NoCameras"
+
+# ROS2 backend configuration
+ros2:
+  # Base namespace prepended to all relative topics below.
+  # Example: namespace "sim" + topic "feedback/gps" => "/sim/feedback/gps"
+  namespace: "sim"
+
+  # Topic names can be relative (joined with namespace) or absolute (start with '/').
+  topics:
+    feedback_gps: "feedback/gps"
+    feedback_gps_vel: "feedback/gps_vel"
+    feedback_battery_state: "feedback/battery/state"
+    feedback_point_cloud: "iv_points_fusion"
+
+  # Battery control services can also be relative or absolute.
+  # These use Trigger requests with empty payloads.
+  services:
+    start_drain: "control/battery/start_drain"
+    stop_drain: "control/battery/stop_drain"
+    start_charge: "control/battery/start_charge"
+    stop_charge: "control/battery/stop_charge"

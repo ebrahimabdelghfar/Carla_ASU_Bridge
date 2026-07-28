@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Auto-format staged C++ sources with clang-format before the commit is created.
+# Install with: make install_git_hooks
+set -uo pipefail
+
+FORMAT_DIRS=("src/ros_apps/carla_telemetry_cpp")
+
+CF="$(command -v clang-format-14 2>/dev/null || command -v clang-format 2>/dev/null)"
+if [ -z "$CF" ]; then
+	echo "pre-commit: clang-format not found, skipping format"
+	exit 0
+fi
+
+pathspecs=()
+for d in "${FORMAT_DIRS[@]}"; do
+	pathspecs+=("$d/*.cpp" "$d/*.hpp")
+done
+
+mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM -- "${pathspecs[@]}")
+if [ "${#files[@]}" -eq 0 ]; then
+	exit 0
+fi
+
+"$CF" -i "${files[@]}"
+git add -- "${files[@]}"
+echo "pre-commit: clang-format applied to ${#files[@]} file(s)"

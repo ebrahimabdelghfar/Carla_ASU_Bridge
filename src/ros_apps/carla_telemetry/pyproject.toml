@@ -1,0 +1,11 @@
+[build-system]
+# Required for colcon --symlink-install with pip >= 21.3 + setuptools >= 64.
+# Without this, pip attempts a PEP 660 editable install via setup.py --editable
+# which is no longer supported, causing:
+#   "error: option --editable not recognized"
+#
+# "setuptools.build_meta:__legacy__" is the correct hook for packages that
+# still use setup.py (ament_python build type). It activates the legacy
+# build backend that supports pip -e (editable) installs.
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta:__legacy__"

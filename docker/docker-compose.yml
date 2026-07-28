@@ -1,0 +1,35 @@
+services:
+  upolis_carla_simulator:
+    build:
+      context: ..
+      dockerfile: docker/dockerfile
+    container_name: upolis_carla_simulator
+    image: upolis_carla_simulator:latest
+    pid: host
+    network_mode: host
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=${GPUS:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - __NV_PRIME_RENDER_OFFLOAD=1
+      - __GLX_VENDOR_LIBRARY_NAME=nvidia
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - CYCLONEDDS_URI=file:///micropilot/cyclonedds.xml
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ../src/ros_apps/carla_micropilot_interface:/micropilot/micropilot_sim/src/ros_apps/carla_micropilot_interface
+      - ../src/ros_apps/carla_telemetry:/micropilot/micropilot_sim/src/ros_apps/carla_telemetry
+      - ../src/ros_apps/carla_telemetry_cpp:/micropilot/micropilot_sim/src/ros_apps/carla_telemetry_cpp
+      - ../src/ros_apps/ros-carla-msgs:/micropilot/micropilot_sim/src/ros_apps/ros-carla-msgs
+      - ../thirdparty_lib/micropilot_manager_msgs:/micropilot/micropilot_sim/src/ros_apps/micropilot_manager_msgs
+      - ../thirdparty_lib/carla:/micropilot/micropilot_sim/thirdparty_lib/carla
+      - ../Carla_Micropolis:/micropilot/micropilot_sim/Carla_Micropolis
+      - ../scripts:/micropilot/micropilot_sim/scripts
+      - ../config:/micropilot/micropilot_sim/config
+      - ../makefile:/micropilot/micropilot_sim/makefile
+    working_dir: /micropilot
+    runtime: nvidia
+    command: tail -f /dev/null
+    stdin_open: true
+    tty: true

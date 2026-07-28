@@ -1,0 +1,9 @@
+# Urban IDD §10.9 — mission start contract (S09: /mission/start_mission).
+# ROS type name UrbanMissionCommand avoids collision with lifecycle MissionCommand.srv.
+string mission_type     # "lap", "waypoint", "parking"
+nav_msgs/Path route
+uint32 total_laps
+---
+bool accepted
+string mission_id
+string message

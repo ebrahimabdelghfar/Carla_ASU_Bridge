@@ -1,0 +1,7 @@
+# Request to start, stop, or restart a node group.
+# Valid group names: HMI, LOCALIZATION, PERCEPTION, NAVIGATION,
+#                    HARDWARE_INTERFACE, SYSTEM_INFRASTRUCTURE, MAPPING
+string group_name
+---
+bool success
+string message

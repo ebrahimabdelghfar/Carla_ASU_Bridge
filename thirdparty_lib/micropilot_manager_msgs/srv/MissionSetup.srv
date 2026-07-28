@@ -1,0 +1,13 @@
+# GUI → HMI Bridge: configure and load a mission.
+# Bridge forwards to system manager's SetMission service.
+# Response `data` contains JSON with accepted_count, etc.
+
+string mission_id
+string hd_map_url
+uint32 total_laps       1
+bool   rtl_enabled      false
+string waypoints_json
+---
+bool   success
+string message
+string data

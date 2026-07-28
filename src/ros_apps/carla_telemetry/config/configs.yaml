@@ -1,0 +1,466 @@
+# ─── CARLA Connection ────────────────────────────────────────────────────────
+carla:
+  host: "localhost"
+  port: 2000
+  timeout: 10.0            # seconds before giving up on server connection
+
+  # Synchronous mode: the node ticks the world at fixed_delta_seconds.
+  # Set to false to run in asynchronous mode (world ticks on its own clock).
+  synchronous_mode: true
+  fixed_delta_seconds: 0.01667   # 60 Hz world tick in sync mode
+
+  # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
+  # Requires pygame and a display.
+  open_manual_control: true
+
+# ─── World / Town ────────────────────────────────────────────────────────────
+world:
+  # CARLA built-in maps: Town01 … Town07, Town10HD, Town12, Town13, Town15
+  town: "Aramco_Map"
+
+  # Index into world.get_map().get_spawn_points().
+  # Use -1 for a random spawn point.
+  spawn_point_index: 0
+
+# ─── Ego Vehicle ─────────────────────────────────────────────────────────────
+vehicle:
+  # CARLA blueprint filter string (partial match allowed, e.g. "vehicle.*")
+  blueprint: "vehicle.car.police_mtwo"
+
+  # role_name is used as the ROS actor name (visible in /carla/<role_name>/...)
+  role_name: ""
+
+  # Actor generation filter: "1", "2", or "All"
+  generation: "2"
+
+  # Enable CARLA Traffic Manager autopilot immediately after spawn
+  autopilot: false
+
+  # null → random recommended color; or "R,G,B" string e.g. "255,0,0"
+  color: null
+
+  # ── Transmission ─────────────────────────────────────────────────────
+  transmission:
+    # "automatic" sets use_gear_autobox=True  in VehiclePhysicsControl.
+    # "manual"    sets use_gear_autobox=False (gear must be commanded via
+    #             VehicleControl.manual_gear_shift = True and .gear = N).
+    type: "manual"      # "automatic" | "manual"
+
+    # Seconds the gearbox takes to change gears (both modes)
+    gear_switch_time: 0.05
+
+    # Clutch strength (kg·m²/s) — affects engine braking at lift-off
+    clutch_strength: 10.0
+
+    # Fixed ratio from transmission output shaft to wheels
+    final_ratio: 0.1
+
+    # Forward gear table.  Each entry: ratio, down_ratio, up_ratio.
+    # down_ratio / up_ratio are fractions of max_rpm for auto-shift.
+    # Leave as [] to keep the blueprint defaults.
+    forward_gears:
+      - { ratio: 4.71, down_ratio: 0.50, up_ratio: 0.65 }   # 1st
+      - { ratio: 2.98, down_ratio: 0.50, up_ratio: 0.65 }   # 2nd
+      - { ratio: 2.14, down_ratio: 0.50, up_ratio: 0.65 }   # 3rd
+      - { ratio: 1.76, down_ratio: 0.50, up_ratio: 0.65 }   # 4th
+      - { ratio: 1.52, down_ratio: 0.50, up_ratio: 0.65 }   # 5th
+      - { ratio: 1.27, down_ratio: 0.50, up_ratio: 0.65 }   # 6th
+      - { ratio: 1.00, down_ratio: 0.50, up_ratio: 0.65 }   # 7th
+      - { ratio: 0.84, down_ratio: 0.50, up_ratio: 0.65 }   # 8th
+
+  # ── Drive Mode ───────────────────────────────────────────────────────
+  # CARLA does not have a single "drive mode" property.  Drive mode is
+  # implemented by assigning near-zero tire_friction to the unpowered axle.
+  #   FWD → rear  wheels: tire_friction ≈ 0.1
+  #   RWD → front wheels: tire_friction ≈ 0.1
+  #   AWD → all four wheels equal (uses physics.wheels values as-is)
+  # vehicle.py reads this field and auto-adjusts wheel friction accordingly.
+  drive_mode: "AWD"     # "FWD" | "RWD" | "AWD"
+
+  # ── Engine & Physics ─────────────────────────────────────────────────
+  physics:
+    # Set to false to skip apply_physics_control() and keep blueprint defaults.
+    enabled: true
+
+    mass: 400.0              # kg
+    drag_coefficient: 0.3     # aerodynamic Cd
+
+    # Centre of mass offset from actor origin (metres, CARLA frame)
+    center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
+
+    max_rpm: 200.0           # peak engine RPM
+    moi: 1.0                  # engine moment of inertia (kg·m²)
+
+    damping_rate_full_throttle:                   0.15
+    damping_rate_zero_throttle_clutch_engaged:    2.0
+    damping_rate_zero_throttle_clutch_disengaged: 0.35
+
+    # Engine torque curve: [[RPM, Nm], ...]
+    torque_curve:
+      - [0.0,    400.0]
+      - [1000.0, 500.0]
+      - [3000.0, 500.0]
+      - [5000.0, 400.0]
+      - [6000.0, 300.0]
+
+    # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
+    # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
+    steering_curve:
+      - [0.0,   1.0]
+      - [60.0,  1.0]
+      - [120.0, 1.0]
+
+    # Enable PhysX sweep-based wheel collision (more realistic, slower)
+    use_sweep_wheel_collision: false
+
+    # Per-wheel physics overrides.
+    # Wheel index convention: 0=FL, 1=FR, 2=RL, 3=RR.
+    # Set 'drive_mode' above to auto-apply FWD/RWD friction differentiation.
+    wheels:
+      - position: "FL"                 # front-left
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0          # degrees
+        radius: 28.0                   # centimetres
+        max_brake_torque: 500.0       # N·m
+        max_handbrake_torque: 3000.0   # N·m
+      - position: "FR"                 # front-right
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0
+        radius: 28.0
+        max_brake_torque: 500.0
+        max_handbrake_torque: 3000.0
+      - position: "RL"                 # rear-left
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0
+        radius: 28.0
+        max_brake_torque: 500.0
+        max_handbrake_torque: 3000.0
+      - position: "RR"                 # rear-right
+        tire_friction: 3.5
+        damping_rate: 0.25
+        max_steer_angle: 16.0
+        radius: 28.0
+        max_brake_torque: 500.0
+        max_handbrake_torque: 3000.0
+
+# ─── GPS World Origin ─────────────────────────────────────────────────────────
+# The CARLA world (0, 0, 0) is mapped to this geographic coordinate.
+# Used by the noise model's ENU↔WGS-84 reprojection.
+global_coordinates:
+  latitude:  51.5074      # degrees  (example: central London)
+  longitude: -0.1278      # degrees
+  altitude:  11.0         # metres above sea level
+
+# ─── GPS Noise Model (identical to Micropolis.Telemetry) ─────────────────────
+# Applied additively on top of CARLA GNSS output (Gauss-Markov + white noise).
+gps:
+  # Update rate for the GPS ROS 2 publisher (Hz)
+  update_rate: 10.0
+
+  # Random-walk bias drift
+  gps_xy_random_walk:   2.0        # (m/s)/sqrt(Hz)
+  gps_z_random_walk:    4.0        # (m/s)/sqrt(Hz)
+  gps_correlation_time: 60.0       # s
+
+  # Position white-noise density
+  gps_xy_noise_density: 0.0002     # m/sqrt(Hz)
+  gps_z_noise_density:  0.0004     # m/sqrt(Hz)
+
+  # Velocity white-noise density
+  gps_vxy_noise_density: 0.2       # (m/s)/sqrt(Hz)
+  gps_vz_noise_density:  0.4       # (m/s)/sqrt(Hz)
+
+  # CARLA GNSS sensor mount position relative to vehicle
+  spawn_point: { x: 1.0, y: 0.0, z: 2.8, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+  # Optional CARLA blueprint noise attributes (applied in addition to the model above)
+  noise_alt_stddev: 0.0
+  noise_lat_stddev: 0.0
+  noise_lon_stddev: 0.0
+
+# ─── Battery Simulation ───────────────────────────────────────────────────────
+# Software model — no CARLA sensor needed. Driven by vehicle speed.
+# Parameters are identical to Micropolis.Telemetry LinearBatteryPlugin model.
+battery:
+  # Electrical model (mirrors Gazebo LinearBatteryPlugin)
+  voltage: 400.0                           # V  - nominal open-circuit voltage
+  open_circuit_voltage_constant_coef: 12.6 # V  - voltage at 100 % charge
+  open_circuit_voltage_linear_coef:  -2.8  # V  - additional voltage drop at 0 % charge
+  capacity: 10.0                           # Ah - total charge capacity
+  initial_charge: 10.0                     # Ah - charge at simulation start
+  resistance: 0.061                        # Ω  - internal resistance
+  smooth_current_tau: 2.0                  # s  - low-pass filter τ for current
+
+  # Power consumers
+  power_load: 500.0                        # W  - constant baseline power draw
+  # consumption_mode:
+  #   "constant"       - only 'power_load' regardless of motion
+  #   "velocity_based" - baseline + extra power proportional to speed
+  consumption_mode: "constant"
+  power_per_speed: 15.0                    # W / (m/s)
+
+  # Lifecycle
+  start_draining: true       # start consuming power immediately at sim start
+  enable_recharge: true      # allow recharging via ROS 2 service
+  charging_time: 0.1         # hours to fully recharge from 0 %
+
+  update_rate: 10.0          # Hz for BatteryState publisher
+
+# ─── IMU Sensor ───────────────────────────────────────────────────────────────
+imu:
+  enabled: true
+  spawn_point: { x: 0.0, y: 0.0, z: 0.0, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+  # CARLA IMU blueprint noise attributes
+  noise_accel_stddev_x: 0.0
+  noise_accel_stddev_y: 0.0
+  noise_accel_stddev_z: 0.0
+  noise_gyro_stddev_x:  0.0
+  noise_gyro_stddev_y:  0.0
+  noise_gyro_stddev_z:  0.0
+  noise_gyro_bias_x:    0.0
+  noise_gyro_bias_y:    0.0
+  noise_gyro_bias_z:    0.0
+
+  frame_id: "imu_link"
+
+# ─── Odometry ──────────────────────────────────────────────────────────
+# Ground-truth odometry computed from CARLA vehicle transform and velocity.
+# No sensor is spawned — data is read directly from the actor each timer tick.
+odometry:
+  enabled: true
+
+  # ROS 2 frame_id for the nav_msgs/Odometry message header.
+  # Usually "odom" (world-fixed frame origin at vehicle spawn location).
+  frame_id: "odom"
+
+  # ROS 2 child_frame_id — the moving body frame
+  child_frame_id: "base_link"
+
+  # Publish rate (Hz).  20 Hz is sufficient for most planning stacks.
+  update_rate: 20.0
+
+  # When true, also broadcast the odom→base_link TF transform via TF2.
+  # Requires tf2_ros to be installed.  Set to false if your stack provides TF externally.
+  broadcast_tf: true
+
+# ─── TF Frames ───────────────────────────────────────────────────────────────
+tf:
+  # Broadcast static base_link → sensor frames from spawn_point config.
+  broadcast_sensor_tf: true
+
+  # Parent frame for sensor transforms. Defaults to odometry child_frame_id.
+  base_frame_id: "base_link"
+
+# ─── Camera Sensors ───────────────────────────────────────────────────────────
+# Each entry defines one camera actor spawned and attached to the ego vehicle.
+# All cameras run concurrently; each has its own publish thread.
+#
+# Supported CARLA camera blueprint IDs:
+#   sensor.camera.rgb              - standard RGB camera
+#   sensor.camera.depth            - depth map (float32 metres)
+#   sensor.camera.semantic_segmentation
+#   sensor.camera.instance_segmentation
+#   sensor.camera.optical_flow
+#   sensor.camera.normals
+cameras:
+  - name: "front_camera"
+    enabled: true
+    type: "sensor.camera.rgb"
+
+    # Mount position relative to vehicle centre (CARLA coordinate: X=forward, Y=right, Z=up)
+    spawn_point: { x: 1.5, y: 0.0, z: 1.5, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    # Image resolution (pixels)
+    image_size_x: 640
+    image_size_y: 480
+
+    # Horizontal field of view (degrees)
+    fov: 90.0
+
+    # Optional extra CARLA blueprint attributes (uncomment to activate):
+    # gamma: 2.2
+    # lens_circle_multiplier: 3.0
+    # lens_circle_falloff: 3.0
+    # chromatic_aberration_intensity: 0.5
+    # chromatic_aberration_offset: 0
+    # blur_amount: 1.0
+    # blur_radius: 0.0
+
+    # Target publish rate (Hz). Camera callbacks fire at the CARLA fixed_delta_seconds
+    # rate; this gate prevents flooding ROS 2 at high sim rates.
+    update_rate: 30.0
+
+    # ROS 2 frame ID used in message headers
+    frame_id: "front_camera"
+
+    # ROS 2 topic suffixes (relative to namespace or absolute if starting with '/')
+    topic_rgb:         "front_camera/rgb"
+    topic_camera_info: "front_camera/camera_info"
+
+  - name: "back_camera"
+    enabled: true
+    type: "sensor.camera.rgb"
+    spawn_point: { x: -1.5, y: 0.0, z: 1.5, roll: 0.0, pitch: 0.0, yaw: 180.0 }
+    image_size_x: 640
+    image_size_y: 480
+    fov: 90.0
+    update_rate: 30.0
+    frame_id: "back_camera"
+    topic_rgb:         "back_camera/rgb"
+    topic_camera_info: "back_camera/camera_info"
+
+  - name: "left_camera"
+    enabled: false
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.0, y: -0.9, z: 1.4, roll: 0.0, pitch: 0.0, yaw: -90.0 }
+    image_size_x: 640
+    image_size_y: 480
+    fov: 90.0
+    update_rate: 30.0
+    frame_id: "left_camera"
+    topic_rgb:         "left_camera/rgb"
+    topic_camera_info: "left_camera/camera_info"
+
+  - name: "right_camera"
+    enabled: false
+    type: "sensor.camera.rgb"
+    spawn_point: { x: 0.0, y: 0.9, z: 1.4, roll: 0.0, pitch: 0.0, yaw: 90.0 }
+    image_size_x: 640
+    image_size_y: 480
+    fov: 90.0
+    update_rate: 30.0
+    frame_id: "right_camera"
+    topic_rgb:         "right_camera/rgb"
+    topic_camera_info: "right_camera/camera_info"
+
+# ─── LiDAR Sensors ────────────────────────────────────────────────────────────
+# Each entry defines one LiDAR actor spawned and attached to the ego vehicle.
+# Multiple LiDARs are supported; each publishes to its own PointCloud2 topic.
+#
+# lidar_type options:
+#   "rotary"       → sensor.lidar.ray_cast
+#                    Standard spinning LiDAR. Supports dropoff/atmospheric noise.
+#   "solid_state"  → sensor.lidar.ray_cast_semantic
+#                    Non-rotating flash LiDAR simulation. Uses horizontal_fov /
+#                    vertical_fov for a cone-shaped FOV. Adds semantic labels.
+#                    Dropoff parameters are not applicable and will be ignored.
+lidars:
+  - name: "top_lidar"
+    enabled: true
+    lidar_type: "rotary"     # "rotary" | "solid_state"
+
+    spawn_point: { x: 0.0, y: 0.0, z: 2.4, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    # ── Rotary LiDAR parameters (sensor.lidar.ray_cast) ──────────────────
+    channels: 64                  # Number of laser beams
+    range: 85.0                   # Maximum detection range (m)
+    points_per_second: 600000     # Total laser shots per second across all channels
+    rotation_frequency: 20.0      # Rotations per second (Hz)
+    upper_fov: 10.0               # Highest laser beam angle (degrees, positive = up)
+    lower_fov: -30.0              # Lowest  laser beam angle (degrees, negative = down)
+
+    # Realistic noise / atmospheric effects (rotary only)
+    atmosphere_attenuation_rate: 0.004   # Exponential intensity falloff per metre
+    dropoff_general_rate: 0.45           # Probability to drop a point at any range
+    dropoff_intensity_limit: 0.8         # Points with intensity below this may drop
+    dropoff_zero_intensity: 0.4          # Probability of dropping zero-intensity points
+
+    # ── Solid-state LiDAR parameters (sensor.lidar.ray_cast_semantic) ────
+    # Uncomment and set lidar_type: "solid_state" to use these instead:
+    # horizontal_fov: 120.0        # FOV width  (degrees)
+    # vertical_fov:   30.0         # FOV height (degrees)
+    # channels: 128
+    # range: 100.0
+    # points_per_second: 200000
+
+    # Target publish rate (Hz).
+    update_rate: 20.0
+
+    # ROS 2 frame ID used in PointCloud2 header
+    frame_id: "lidar_top"
+
+    # ROS 2 topic suffix (relative to namespace or absolute)
+    topic_point_cloud: "lidar/top/points"
+
+  - name: "front_lidar"
+    enabled: false
+    lidar_type: "solid_state"
+
+    spawn_point: { x: 2.0, y: 0.0, z: 1.2, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+
+    # Solid-state cone parameters
+    horizontal_fov: 120.0
+    vertical_fov:   30.0
+    channels: 128
+    range: 100.0
+    points_per_second: 200000
+
+    update_rate: 20.0
+    frame_id: "lidar_front"
+    topic_point_cloud: "lidar/front/points"
+
+# ─── Control Input Configuration ─────────────────────────────────────────────
+# Scale factors for converting ICD commands → CARLA VehicleControl.
+control:
+  # RPM value that maps to full throttle (1.0) in CARLA.
+  #   throttle = |velocity_rpm| / max_rpm    (clamped to [0, 1])
+  max_rpm: 150.0
+
+  # Max steering angle (degrees) that maps to full steer (±1.0) in CARLA.
+  #   carla_steer = -steering_angle_deg / max_steer_deg   (+ left → − right)
+  max_steer_deg: 70.0
+
+# ─── ROS 2 Configuration ──────────────────────────────────────────────────────
+ros2:
+  # Base namespace prepended to all relative topics.
+  # With namespace "sim": "feedback/gps" becomes "/sim/feedback/gps".
+  namespace: "sim"
+
+  # ── Topic names (relative or absolute) ────────────────────────────────────
+  topics:
+    # ── Feedback outputs (publications) ─────────────────────────────────────
+    # GPS fix:        /sim/feedback/gps               sensor_msgs/NavSatFix
+    feedback_gps:              "feedback/gps"
+    # GPS velocity:   /sim/feedback/gps_vel           geometry_msgs/TwistStamped
+    feedback_gps_vel:          "feedback/gps_vel"
+    # Battery state:  /sim/feedback/battery/state     sensor_msgs/BatteryState
+    feedback_battery_state:    "feedback/battery/state"
+    # IMU:            /sim/feedback/imu               sensor_msgs/Imu
+    feedback_imu:              "feedback/imu"
+    # Speed:          /sim/feedback/speed             std_msgs/Float32   (m/s)
+    feedback_speed:            "feedback/speed"
+    # Steering echo:  /sim/feedback/steering_angle    std_msgs/Float32   (degrees)
+    feedback_steering_angle:   "feedback/steering_angle"
+    # 4-wheel joints: /sim/feedback/steering_angles   sensor_msgs/JointState
+    feedback_steering_angles:  "feedback/steering_angles"
+    # Odometry:       /sim/odom                       nav_msgs/Odometry
+    # NOTE: ICD defines this as /sim/odom (not under feedback/)
+    odom:                      "odom"
+
+    # ── Control inputs (subscriptions) ──────────────────────────────────────
+    # Wheel velocity: /sim/control/velocity_rpm       std_msgs/Float32   (RPM)
+    control_velocity_rpm:        "control/velocity_rpm"
+    # Steering cmd:   /sim/control/steering_angle_deg std_msgs/Float32   (degrees)
+    control_steering_angle_deg:  "control/steering_angle_deg"
+    # Emergency brake:/sim/control/brake              std_msgs/Bool
+    control_brake:               "control/brake"
+    # Spawn point is always /sim/spawn_point (absolute, hardcoded per ICD)
+
+  # ── Services ──────────────────────────────────────────────────────────────
+  services:
+    # Battery control (std_srvs/Trigger)
+    start_drain:   "control/battery/start_drain"
+    stop_drain:    "control/battery/stop_drain"
+    start_charge:  "control/battery/start_charge"
+    stop_charge:   "control/battery/stop_charge"
+
+    # Lights control (std_srvs/SetBool)
+    high_beams:    "control/lights/high_beams"
+    low_beams:     "control/lights/low_beams"
+    left_blinker:  "control/lights/left_blinker"
+    right_blinker: "control/lights/right_blinker"
+    siren:         "control/lights/siren"

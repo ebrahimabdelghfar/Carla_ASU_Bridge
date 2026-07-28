@@ -1,0 +1,16 @@
+# Accept a set of mission waypoints with configuration
+# Calls MissionManager::set_waypoints()
+
+micropilot_manager_msgs/Waypoint[] waypoints
+
+# Mission configuration
+uint32  total_laps                 1
+bool    rtl_enabled                false
+float64 goal_reach_radius          1.0
+float64 stopped_speed_threshold    0.05
+string  mission_id
+string  hd_map_url
+---
+bool    success
+string  message
+uint32  accepted_count

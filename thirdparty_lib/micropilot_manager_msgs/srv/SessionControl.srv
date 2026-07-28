@@ -1,0 +1,11 @@
+# GUI → HMI Bridge: teleop session lifecycle.
+# Valid commands: start_session, end_session.
+# For start_session: operator_id and target_mode are required.
+
+string command
+string operator_id
+string target_mode
+---
+bool   success
+string message
+string data

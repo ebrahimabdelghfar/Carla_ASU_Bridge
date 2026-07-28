@@ -1,0 +1,11 @@
+# GUI → HMI Bridge: mission lifecycle command.
+# Valid commands: start, pause, resume, abort, clear, enter_rtl,
+#                 persist (path required), restore (path required).
+# Bridge forwards to system manager's MissionCommand service.
+
+string command
+string path
+---
+bool   success
+string message
+string data

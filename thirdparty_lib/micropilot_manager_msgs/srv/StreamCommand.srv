@@ -1,0 +1,10 @@
+# GUI → HMI Bridge: stream control commands.
+# Dispatches to StreamManager methods: start, stop, restart,
+# start_cameras, stop_cameras, start_audio, stop_audio, status.
+# For 'status', response `data` contains a JSON snapshot.
+
+string command
+---
+bool   success
+string message
+string data

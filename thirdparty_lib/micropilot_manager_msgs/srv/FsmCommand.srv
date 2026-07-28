@@ -1,0 +1,10 @@
+# GUI → HMI Bridge: trigger an FSM event by name.
+# Bridge forwards to system manager's FsmTransition service,
+# returning the result in the unified response envelope.
+# FSM state transition details are serialized in `data` as JSON.
+
+string event_name
+---
+bool   success
+string message
+string data

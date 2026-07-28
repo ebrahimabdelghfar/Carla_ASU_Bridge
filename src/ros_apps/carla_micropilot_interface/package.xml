@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>carla_micropilot_interface</name>
+  <version>1.0.0</version>
+  <description>
+    Bridge node between micropilot_vehicle_interface SimulationTransport
+    (/sim/control/* and /sim/feedback/*) and the CARLA ROS 2 bridge
+    (/carla/hero/*). Translates RPM and degrees into CARLA normalized
+    commands and forwards speedometer feedback back to the vehicle interface.
+  </description>
+  <maintainer email="wajih.mechlawi@micropolis.ae">wajih</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>carla_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

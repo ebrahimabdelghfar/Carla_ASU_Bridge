@@ -1,0 +1,9 @@
+# Mission lifecycle command
+# Valid commands: start, pause, resume, abort, clear, persist, restore
+# For persist/restore, the path field specifies the file path.
+
+string command
+string path
+---
+bool   success
+string message

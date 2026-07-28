@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>carla_telemetry_cpp</name>
+  <version>0.1.0</version>
+  <description>
+    CARLA ROS 2 telemetry interface (C++) — mirrors the Python carla_telemetry package.
+    Spawns an ego vehicle in CARLA, attaches configurable cameras and LiDARs,
+    simulates GPS noise, battery state, and publishes all data over ROS 2.
+  </description>
+  <maintainer email="dev@micropilot.ai">Micropilot</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>rclcpp_lifecycle</build_depend>
+  <exec_depend>rclcpp_lifecycle</exec_depend>
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>ackermann_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>carla_msgs</depend>
+  <depend>micropilot_manager_msgs</depend>
+  <depend>rosgraph_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,7 @@
+build:
+  build-base: ../../build/ros_apps/
+  install-base: ../../install/ros_apps/
+  parallel-workers: 4
+  base-paths:
+    - ../../src/ros_apps
+    - ../../thirdparty_lib/ros-carla-msgs
