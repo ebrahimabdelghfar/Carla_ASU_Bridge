@@ -31,8 +31,8 @@ carla:
 
 # ─── World / Town ────────────────────────────────────────────────────────────
 world:
-  # CARLA built-in maps: Town01 … Town07, Town10HD, Town12, Town13, Town15 Aramco_Map exhibition_map abou_dhabi_Map dubai_map
-  town: "Town10HD"
+  # CARLA built-in maps: Town01 … Town07, Town10HD, Town12, Town13, Town15 silverstone
+  town: "silverstone"
   # Spawn point configuration.
   # To spawn at specific coordinates:
   # spawn_point_coords: { x: 0.0, y: 0.0, z: 0.5, roll: 0.0, pitch: 0.0, yaw: 0.0 }
@@ -42,7 +42,7 @@ world:
 
 # ─── Dynamic Pedestrians ─────────────────────────────────────────────────────
 pedestrians:
-  enabled: true
+  enabled: false
   count: 50                    # Number of pedestrians to spawn
   blueprints:                  # List of walker types to spawn (randomly distributed)
     - "walker.pedestrian.0001"
@@ -52,7 +52,7 @@ pedestrians:
 
 # ─── Dynamic NPC Vehicles ────────────────────────────────────────────────────
 npc_vehicles:
-  enabled: true
+  enabled: false
   count: 10                    # Number of NPC vehicles to spawn
   blueprints:                  # Vehicle blueprint filters (randomly distributed)
     - "vehicle.*"
@@ -89,7 +89,7 @@ vehicle:
   # CARLA blueprint filter string (partial match allowed, e.g. "vehicle.*")
   # m1: "vehicle.micropolis.upolice_m1"
   # m2: "vehicle.micropolis.upolice_m2v2"
-  blueprint: "vehicle.micropolis.upolice_m02p"
+  blueprint: "vehicle.vehicle.asurt_fsai"
 
   # role_name is used as the ROS actor name (visible in /carla/<role_name>/...)
   role_name: "hero"
@@ -134,7 +134,7 @@ vehicle:
   # ── Engine & Physics ─────────────────────────────────────────────────
   physics:
     # Set to false to skip apply_physics_control() and keep blueprint defaults.
-    enabled: true
+    enabled: false
 
     mass: 400.0              # kg
     drag_coefficient: 0.1     # aerodynamic Cd

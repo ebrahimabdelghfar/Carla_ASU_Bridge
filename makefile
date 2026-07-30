@@ -132,14 +132,14 @@ launch_carla_sim: kill_stale_sim
 	}; \
 	trap 'cleanup; exit' INT TERM HUP; \
 	source install/ros_apps/setup.bash; \
-	$(CARLA_AS_USER) setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen & \
+	$(CARLA_AS_USER) setsid bash ASU_RT_Carla/CarlaUE4.sh -notexturestreaming -vulkan -renderoffscreen & \
 	until nc -z localhost 2000; do sleep 1; done; \
 	setsid ros2 launch carla_telemetry_cpp carla_telemetry.launch.py auto_start:=$(AUTO_START) & \
 	L_PID=$$!; \
 	wait $$L_PID; \
 	cleanup
 launch_carla_sim_perf: kill_stale_sim
-	@$(CARLA_AS_USER) setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen -quality-level=Low & \
+	@$(CARLA_AS_USER) setsid bash ASU_RT_Carla/CarlaUE4.sh -vulkan -renderoffscreen -quality-level=Low & \
 	C_PID=$$!; \
 	source install/ros_apps/setup.bash; \
 	cleanup() { \
@@ -169,101 +169,11 @@ run_sensor_sync_test:
 	@source install/ros_apps/setup.bash && \
 	ros2 run sensor_sync_test sensor_sync_test_node \
 		--ros-args -p config_path:=$(WORKSPACE)/config/carla_interface_config.yaml
-# No kill_stale dep on purpose: that pkills every CarlaUE4 and would nuke siblings.
-#   make launch_carla_servers CARLA_INSTANCES=3 CARLA_GPUS="0 1"
-CARLA_INSTANCES ?= 1
-CARLA_GPUS      ?= 0
-CARLA_BASE_PORT ?= 2000
-launch_carla_servers:
-	@gpus=($(CARLA_GPUS)); ng=$${#gpus[@]}; n=$(CARLA_INSTANCES); p=$(CARLA_BASE_PORT); \
-	declare -a used gpu; \
-	for i in $$(seq 0 $$((n-1))); do \
-		while nc -z localhost $$p 2>/dev/null || nc -z localhost $$((p+1)) 2>/dev/null || nc -z localhost $$((p+2)) 2>/dev/null; do \
-			p=$$((p+10)); \
-		done; \
-		g=$${gpus[$$((i % ng))]}; \
-		used[$$i]=$$p; gpu[$$i]=$$g; \
-		echo -e "$(YELLOW)Starting CARLA server $$i on GPU $$g, RPC port $$p (log: /tmp/carla_server_$$p.log)$(NC)"; \
-		$(CARLA_AS_USER) env CUDA_VISIBLE_DEVICES=$$g setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen \
-			-graphicsadapter=$$g -carla-rpc-port=$$p >/tmp/carla_server_$$p.log 2>&1 & \
-		p=$$((p+10)); \
-	done; \
-	fail=0; \
-	for i in $${!used[@]}; do \
-		q=$${used[$$i]}; \
-		echo -e "$(YELLOW)Waiting for CARLA server $$i on :$$q...$(NC)"; \
-		for t in $$(seq 1 120); do nc -z localhost $$q 2>/dev/null && break; sleep 1; done; \
-		if nc -z localhost $$q 2>/dev/null; then \
-			echo -e "$(GREEN)CARLA server $$i UP  ->  GPU $${gpu[$$i]}  RPC port $$q$(NC)"; \
-		else \
-			echo -e "$(RED)CARLA server $$i FAILED to open :$$q — see /tmp/carla_server_$$q.log$(NC)"; fail=1; \
-		fi; \
-	done; \
-	echo -e "$(GREEN)Opened CARLA RPC ports: $${used[@]}$(NC)"; \
-	exit $$fail
-# make launch_carla_fleet CARLA_INSTANCES=3 CARLA_GPUS="0 1" DOMAIN_BASE=3
-DOMAIN_BASE ?= 1
-launch_carla_fleet:
-	@source install/ros_apps/setup.bash; \
-	gpus=($(CARLA_GPUS)); ng=$${#gpus[@]}; n=$(CARLA_INSTANCES); p=$(CARLA_BASE_PORT); \
-	declare -a used gpu; \
-	for i in $$(seq 0 $$((n-1))); do \
-		while nc -z localhost $$p 2>/dev/null || nc -z localhost $$((p+1)) 2>/dev/null || nc -z localhost $$((p+2)) 2>/dev/null; do \
-			p=$$((p+10)); \
-		done; \
-		g=$${gpus[$$((i % ng))]}; \
-		used[$$i]=$$p; gpu[$$i]=$$g; \
-		echo -e "$(YELLOW)Starting CARLA server $$i on GPU $$g, RPC port $$p (log: /tmp/carla_server_$$p.log)$(NC)"; \
-		$(CARLA_AS_USER) env CUDA_VISIBLE_DEVICES=$$g setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen \
-			-graphicsadapter=$$g -carla-rpc-port=$$p >/tmp/carla_server_$$p.log 2>&1 & \
-		p=$$((p+10)); \
-	done; \
-	fail=0; \
-	for i in $${!used[@]}; do \
-		q=$${used[$$i]}; \
-		echo -e "$(YELLOW)Waiting for CARLA server $$i on :$$q...$(NC)"; \
-		for t in $$(seq 1 120); do nc -z localhost $$q 2>/dev/null && break; sleep 1; done; \
-		if nc -z localhost $$q 2>/dev/null; then \
-			echo -e "$(GREEN)CARLA server $$i UP  ->  GPU $${gpu[$$i]}  RPC port $$q$(NC)"; \
-			d=$$(($(DOMAIN_BASE)+i)); tm=$$((8000+i)); cfg=/tmp/carla_config_$$q.yaml; \
-			log=/tmp/carla_bridge_domain$$d.log; \
-			sed -e "s|^\(\s*host:\).*|\1 \"localhost\"|" \
-			    -e "s|^\(\s*port:\).*|\1 $$q|" \
-			    -e "s|^\(\s*tm_port:\).*|\1 $$tm|" \
-			    config/carla_interface_config.yaml > $$cfg; \
-			echo -e "$(YELLOW)Launching bridge $$i -> :$$q  ROS_DOMAIN_ID=$$d  tm_port=$$tm (cfg: $$cfg, log: $$log)$(NC)"; \
-			ROS_DOMAIN_ID=$$d setsid ros2 launch carla_telemetry_cpp carla_telemetry.launch.py \
-				config_file:=$$cfg auto_start:=$(AUTO_START) >$$log 2>&1 & \
-		else \
-			echo -e "$(RED)CARLA server $$i FAILED to open :$$q — see /tmp/carla_server_$$q.log$(NC)"; fail=1; \
-		fi; \
-	done; \
-	echo -e "$(GREEN)Opened CARLA RPC ports: $${used[@]}$(NC)"; \
-	exit $$fail
-launch_designer: kill_stale_sim
-	@$(CARLA_AS_USER) setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen & \
-	C_PID=$$!; \
-	cleanup() { \
-		kill -9 -$$C_PID >/dev/null 2>&1 || true; \
-		pkill -9 -f '[C]arlaUE4' >/dev/null 2>&1 || true; \
-		for i in $$(seq 1 20); do nc -z localhost 2000 >/dev/null 2>&1 || break; sleep 1; done; \
-	}; \
-	trap 'cleanup; exit' INT TERM; \
-	echo -e "${YELLOW}Waiting for CARLA server on :2000...${NC}"; \
-	until nc -z localhost 2000; do sleep 1; done; \
-	sleep 3; \
-	echo -e "${GREEN}CARLA server up. Launching Scenario Designer...${NC}"; \
-	cd $(WORKSPACE)/scenario_runner && python3 -m tools.scenario_designer.main --host localhost --port 2000; \
-	cleanup
-launch_designer_no_server:
-	echo -e "${GREEN}Launching Scenario Designer...${NC}"; \
-	cd $(WORKSPACE)/scenario_runner && python3 -m tools.scenario_designer.main --host localhost --port 2000; \
-	cleanup
 setup_ros2_workspace: format
 	@bash scripts/ros_apps_build/colcon_build.sh
 setup_docker:
-	@if [ ! -d "Carla_Micropolis" ]; then \
-		echo -e "${RED}Carla_Micropolis directory does not exist, please Run make download_carla_assets first${NC}"; \
+	@if [ ! -d "ASU_RT_Carla" ]; then \
+		echo -e "${RED}ASU_RT_Carla directory does not exist, please Run make download_carla_assets first${NC}"; \
 		exit 1; \
 	fi && \
 	docker build -t upolis_carla_simulator:latest -f $(WORKSPACE)/docker/dockerfile $(WORKSPACE)

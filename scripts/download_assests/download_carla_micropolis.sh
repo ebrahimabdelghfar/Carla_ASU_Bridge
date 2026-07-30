@@ -3,15 +3,15 @@
 # go to workspace root
 cd "$(dirname "$0")/../.."
 
-URL="https://micropolis626-my.sharepoint.com/:u:/g/personal/ebrahim_abdelghfar_micropolis_ai/IQDY-T7ui3gZRZiIPBkfqPZqAefqVBK-aLcgtrd3HcXGZGU?e=ayQe1D&download=1"
-TAR_FILE="CarlaMicropolis.tar.gz"
+URL="https://engasuedu-my.sharepoint.com/:u:/g/personal/2301465_eng_asu_edu_eg/IQD4YytzmGiUSp_uHSNfLgpLAcBYgLsy1pdf0Ge9Z_d9QI8?e=DGcpwF&download=1"
+TAR_FILE="ASU_RT_Carla.tar.gz"
 
 echo "Download tar..."
 wget -q --show-progress --progress=bar:force:noscroll -O "$TAR_FILE" "$URL"
 
-echo "Extract tar to Carla_Micropolis..."
-mkdir -p Carla_Micropolis
-tar -xzf "$TAR_FILE" -C Carla_Micropolis
+echo "Extract tar to ASU_RT_Carla.tar.gz..."
+mkdir -p ASU_RT_Carla
+tar -xzf "$TAR_FILE" -C ASU_RT_Carla
 
 echo "Delete tar..."
 rm "$TAR_FILE"
