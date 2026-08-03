@@ -334,14 +334,14 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
 
   if (control_mode_.source == "ackermann_drive") {
     ackermann_sub_ =
-        node_->create_subscription<ackermann_msgs::msg::AckermannDrive>(
+        node_->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
             topic(get_or(topics_cfg_, "control_ackermann",
                          "control/ackermann_drive")),
             qos_rel,
-            [this](const ackermann_msgs::msg::AckermannDrive::SharedPtr msg) {
-              ack_speed_ = msg->speed;
-              ack_steering_angle_ = msg->steering_angle;
-              ack_steering_angle_vel_ = msg->steering_angle_velocity;
+            [this](const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg) {
+              ack_speed_ = msg->drive.speed;
+              ack_steering_angle_ = msg->drive.steering_angle;
+              ack_steering_angle_vel_ = msg->drive.steering_angle_velocity;
             },
             sub_opts);
   } else {

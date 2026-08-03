@@ -699,7 +699,7 @@ ros2:
     control_steering_angle_deg:  "control/steering_angle_deg"
     # Emergency brake:/sim/control/brake              std_msgs/Bool
     control_brake:               "control/brake"
-    # Ackermann drive: /sim/control/ackermann_drive   ackermann_msgs/AckermannDrive
+    # Ackermann drive: /sim/control/ackermann_drive   ackermann_msgs/AckermannDriveStamped
     control_ackermann:           "/drive"
     # Spawn point is always /sim/spawn_point (absolute, hardcoded per ICD)
 

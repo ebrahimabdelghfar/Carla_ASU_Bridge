@@ -18,7 +18,7 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
 
-#include <ackermann_msgs/msg/ackermann_drive.hpp>
+#include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <carla_msgs/srv/set_steering_mode.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -489,7 +489,7 @@ class CarlaROS2Backend {
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr vel_rpm_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr steer_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr brake_sub_;
-  rclcpp::Subscription<ackermann_msgs::msg::AckermannDrive>::SharedPtr
+  rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       ackermann_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr spawn_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sim_start_sub_;
