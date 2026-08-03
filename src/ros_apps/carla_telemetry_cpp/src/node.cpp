@@ -20,6 +20,7 @@ CarlaTelemetryNode::CarlaTelemetryNode(const rclcpp::NodeOptions& options)
     : rclcpp_lifecycle::LifecycleNode("micropilot_carla_bridge_node", options) {
   // Declare parameters here
   this->declare_parameter<std::string>("config_file", "");
+  this->declare_parameter<std::string>("tire_model_config_file", "");
   this->declare_parameter<std::string>("open_manual_control", "");
   this->declare_parameter<std::string>("world_town", "");
 
@@ -46,6 +47,12 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
     config_path = "config/carla_interface_config.yaml";
   }
 
+  std::string tire_model_config_path;
+  this->get_parameter("tire_model_config_file", tire_model_config_path);
+  if (tire_model_config_path.empty()) {
+    tire_model_config_path = "config/tire_model_config.yaml";
+  }
+
   RCLCPP_INFO(this->get_logger(), "Loading config: %s", config_path.c_str());
   // A throw here would propagate out of the lifecycle callback and unwind the
   // executor, killing the process. Tear down the partial build and report
@@ -53,6 +60,7 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
   // retried without a stale half-built vehicle/backend in the way.
   try {
     load_config(config_path);
+    load_tire_model_config(tire_model_config_path);
     setup_vehicle();
     setup_pedestrians();
     setup_npc_vehicles();
@@ -139,6 +147,10 @@ void CarlaTelemetryNode::load_config(const std::string& path) {
       ded_clients && ded_clients["enabled"].as<bool>(false);
   RCLCPP_INFO(this->get_logger(), "dedicated_clients.enabled = %s",
               dedicated_clients_enabled_ ? "true" : "false");
+}
+
+void CarlaTelemetryNode::load_tire_model_config(const std::string& path) {
+  tire_model_config_ = YAML::LoadFile(path);
 }
 
 void CarlaTelemetryNode::setup_vehicle() {
@@ -318,6 +330,26 @@ void CarlaTelemetryNode::setup_vehicle() {
 
   backend_->set_control_config(ctrl["max_rpm"].as<double>(150),
                                ctrl["max_steer_deg"].as<double>(70), mode_cfg);
+
+  // ── Ground-truth tire model (Magic Formula + motor coefficient) ──────
+  CarlaROS2Backend::TireModelConfig tire_model_cfg;
+  tire_model_cfg.drive_mode = veh["drive_mode"].as<std::string>("AWD");
+  auto tm = tire_model_config_["tire_model"];
+  for (auto w : tm["magic_formula"]["wheels"]) {
+    CarlaROS2Backend::TireModelConfig::Wheel mfw;
+    mfw.position = w["position"].as<std::string>("");
+    mfw.B = w["B"].as<double>(10.0);
+    mfw.C = w["C"].as<double>(1.9);
+    mfw.E = w["E"].as<double>(0.97);
+    mfw.mu = w["mu"].as<double>(1.6);
+    tire_model_cfg.wheels.push_back(mfw);
+  }
+  auto motor = tm["motor"];
+  tire_model_cfg.torque_constant_Nm = motor["torque_constant_Nm"].as<double>(250.0);
+  tire_model_cfg.gear_ratio = motor["gear_ratio"].as<double>(8.0);
+  tire_model_cfg.drivetrain_efficiency =
+      motor["drivetrain_efficiency"].as<double>(0.95);
+  backend_->set_tire_model_config(tire_model_cfg);
 }
 
 void CarlaTelemetryNode::setup_pedestrians() {

@@ -89,6 +89,11 @@ CarlaROS2Backend::CarlaROS2Backend(
   motors_pub_ = node_->create_publisher<std_msgs::msg::String>(
       topic(get_or(topics_cfg_, "feedback_motors", "feedback/motors")),
       qos_rel);
+  tire_forces_pub_ =
+      node_->create_publisher<micropilot_manager_msgs::msg::TireForces>(
+          topic(get_or(topics_cfg_, "feedback_tire_forces",
+                       "feedback/tire_forces")),
+          qos_rel);
   vehicle_state_pub_ = node_->create_publisher<std_msgs::msg::String>(
       topic(get_or(topics_cfg_, "feedback_vehicle_state",
                    "feedback/vehicle_state")),
@@ -800,6 +805,55 @@ void CarlaROS2Backend::publish_motors() {
   motors_pub_->publish(msg);
 }
 
+void CarlaROS2Backend::publish_tire_forces(
+    const carla::rpc::VehicleTelemetryData& telem,
+    const carla::rpc::VehicleControl& ctrl,
+    const carla::rpc::VehiclePhysicsControl& phys) {
+  if (telem.wheels.size() < 4 || phys.wheels.size() < 4 ||
+      tire_model_cfg_.wheels.size() < 4) {
+    return;
+  }
+
+  micropilot_manager_msgs::msg::TireForces msg;
+  msg.stamp = node_->get_clock()->now();
+  msg.wheel_names = {"FL", "FR", "RL", "RR"};
+
+  for (size_t i = 0; i < 4; ++i) {
+    const auto& w = telem.wheels[i];
+    const auto& mf = tire_model_cfg_.wheels[i];
+
+    // ── Lateral force: Magic Formula (Pacejka), fed by CARLA's own slip
+    // telemetry — independent of CARLA's internal tire force output.
+    double alpha = w.lat_slip;
+    double D = mf.mu * w.tire_load;
+    double Bx = mf.B * alpha;
+    double lateral_force =
+        D * std::sin(mf.C * std::atan(Bx - mf.E * (Bx - std::atan(Bx))));
+
+    // ── Longitudinal force: motor-torque-constant model, independent of
+    // CARLA's own engine torque_curve. Driven axle follows vehicle.drive_mode
+    // (FL/FR = 0/1, RL/RR = 2/3), same convention as CarlaVehicle::apply_physics.
+    bool driven = (i < 2) ? (tire_model_cfg_.drive_mode != "RWD")
+                          : (tire_model_cfg_.drive_mode != "FWD");
+    double radius_m = phys.wheels[i].radius / 100.0;
+    double motor_force =
+        driven ? (tire_model_cfg_.torque_constant_Nm * ctrl.throttle *
+                  tire_model_cfg_.gear_ratio *
+                  tire_model_cfg_.drivetrain_efficiency) /
+                     radius_m
+              : 0.0;
+    double brake_force = ctrl.brake * phys.wheels[i].max_brake_torque / radius_m;
+
+    msg.slip_angle[i] = alpha;
+    msg.slip_ratio[i] = w.long_slip;
+    msg.normal_load[i] = w.tire_load;
+    msg.lateral_force[i] = lateral_force;
+    msg.longitudinal_force[i] = motor_force - brake_force;
+  }
+
+  tire_forces_pub_->publish(msg);
+}
+
 // ── Publish Vehicle State (lights / blinkers / steering) ─────────────
 
 void CarlaROS2Backend::publish_vehicle_state() {
@@ -1069,6 +1123,9 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     motors_pub_->publish(m);
   }
 
+  // ── Ground-truth tire forces (Magic Formula + motor model) ──────────
+  publish_tire_forces(telem, ctrl, phys);
+
   // ── Vehicle-state JSON (cached light bitmask) ───────────────────────
   {
     using LS = carla::rpc::VehicleLightState::LightState;
@@ -1312,6 +1369,7 @@ void CarlaROS2Backend::activate_publishers() {
   if (steer_echo_pub_) steer_echo_pub_->on_activate();
   if (steer_angles_pub_) steer_angles_pub_->on_activate();
   if (motors_pub_) motors_pub_->on_activate();
+  if (tire_forces_pub_) tire_forces_pub_->on_activate();
   if (vehicle_state_pub_) vehicle_state_pub_->on_activate();
   if (autonomous_mode_pub_) autonomous_mode_pub_->on_activate();
   if (clock_pub_) clock_pub_->on_activate();
@@ -1335,6 +1393,7 @@ void CarlaROS2Backend::deactivate_publishers() {
   if (steer_echo_pub_) steer_echo_pub_->on_deactivate();
   if (steer_angles_pub_) steer_angles_pub_->on_deactivate();
   if (motors_pub_) motors_pub_->on_deactivate();
+  if (tire_forces_pub_) tire_forces_pub_->on_deactivate();
   if (vehicle_state_pub_) vehicle_state_pub_->on_deactivate();
   if (autonomous_mode_pub_) autonomous_mode_pub_->on_deactivate();
   if (clock_pub_) clock_pub_->on_deactivate();

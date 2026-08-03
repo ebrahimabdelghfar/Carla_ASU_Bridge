@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/NetworkStatus.msg"
   "msg/SafetyRuntimeData.msg"
   "msg/ScenarioContext.msg"
+  "msg/TireForces.msg"
   "srv/FsmTransition.srv"
   "srv/NodeGroupCommand.srv"
   "srv/NodeProcessCommand.srv"

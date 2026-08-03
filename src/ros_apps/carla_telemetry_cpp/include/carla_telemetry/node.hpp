@@ -89,6 +89,12 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
    */
   void load_config(const std::string& path);
   /**
+   * @brief Load the ground-truth tire model configuration.
+   *
+   * @param path The path to the tire model configuration
+   */
+  void load_tire_model_config(const std::string& path);
+  /**
    * @brief Setup the vehicle.
    */
   void setup_vehicle();
@@ -165,6 +171,7 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
 
   // YAML config (parsed once)
   YAML::Node config_;
+  YAML::Node tire_model_config_;
 
   // Core components
   std::unique_ptr<CarlaVehicle> vehicle_;

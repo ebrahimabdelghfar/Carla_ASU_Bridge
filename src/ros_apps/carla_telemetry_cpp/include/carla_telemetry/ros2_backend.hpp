@@ -1,7 +1,9 @@
 #pragma once
 
 #include <carla/client/Vehicle.h>
+#include <carla/rpc/VehicleControl.h>
 #include <carla/rpc/VehiclePhysicsControl.h>
+#include <carla/rpc/VehicleTelemetryData.h>
 
 #include <atomic>
 #include <memory>
@@ -10,6 +12,7 @@
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "carla_telemetry/types.hpp"
 
@@ -23,6 +26,7 @@
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <micropilot_manager_msgs/msg/tire_forces.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
@@ -97,6 +101,30 @@ class CarlaROS2Backend {
   };
 
   /**
+   * @brief Ground-truth tire force model configuration (Magic Formula +
+   * motor coefficient), parsed from config/tire_model_config.yaml.
+   */
+  struct TireModelConfig {
+    struct Wheel {
+      std::string position;  ///< "FL", "FR", "RL", "RR".
+      double B = 10.0;        ///< Magic Formula stiffness factor.
+      double C = 1.9;         ///< Magic Formula shape factor.
+      double E = 0.97;        ///< Magic Formula curvature factor.
+      double mu = 1.6;        ///< Friction coefficient (peak D = mu * tire_load).
+    };
+    std::vector<Wheel> wheels;  ///< Per-wheel Magic Formula params, FL/FR/RL/RR.
+
+    std::string drive_mode =
+        "AWD";  ///< Mirrors vehicle.drive_mode ("AWD"/"FWD"/"RWD"); gates
+                ///< which wheels receive motor force.
+    double torque_constant_Nm = 250.0;   ///< Motor torque at throttle = 1.0.
+    double gear_ratio = 8.0;             ///< Motor-to-wheel gear ratio.
+    double drivetrain_efficiency = 0.95;  ///< Drivetrain mechanical efficiency.
+
+    TireModelConfig() = default;
+  };
+
+  /**
    * @brief Set the battery controller.
    * @param battery Pointer to the battery controller.
    */
@@ -131,6 +159,14 @@ class CarlaROS2Backend {
    */
   void set_control_config(double max_rpm, double max_steer_deg,
                           const ControlModeConfig& mode_cfg);
+  /**
+   * @brief Set the ground-truth tire model configuration (Magic Formula +
+   * motor coefficient), used by publish_tire_forces().
+   * @param tire_model_cfg Tire model configuration.
+   */
+  void set_tire_model_config(const TireModelConfig& tire_model_cfg) {
+    tire_model_cfg_ = tire_model_cfg;
+  }
 
   // ── Camera / LiDAR registration ──────────────────────────────────
   /**
@@ -209,6 +245,17 @@ class CarlaROS2Backend {
    * @brief Publish motor data.
    */
   void publish_motors();
+  /**
+   * @brief Compute and publish ground-truth per-wheel tire forces (Magic
+   * Formula lateral force + motor-coefficient longitudinal force) from an
+   * already-fetched telemetry/control/physics snapshot. No CARLA RPCs.
+   * @param telem Vehicle telemetry snapshot (from GetTelemetryData()).
+   * @param ctrl Vehicle control snapshot (from GetControl()).
+   * @param phys Vehicle physics control (cached, from GetPhysicsControl()).
+   */
+  void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem,
+                           const carla::rpc::VehicleControl& ctrl,
+                           const carla::rpc::VehiclePhysicsControl& phys);
   /**
    * @brief Publish vehicle state data.
    */
@@ -305,6 +352,7 @@ class CarlaROS2Backend {
   double max_rpm_ = 150.0;
   double max_steer_deg_ = 16.0;
   ControlModeConfig control_mode_;
+  TireModelConfig tire_model_cfg_;
 
   // PID states
   struct PIDState {
@@ -464,6 +512,8 @@ class CarlaROS2Backend {
       steer_angles_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       motors_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<
+      micropilot_manager_msgs::msg::TireForces>::SharedPtr tire_forces_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       vehicle_state_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr
