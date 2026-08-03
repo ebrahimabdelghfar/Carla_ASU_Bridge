@@ -435,7 +435,7 @@ class CarlaROS2Backend {
    *    and clobber the active steering configuration.
    */
   int steering_mode_ =
-      2;  // Default to DoubleAckerman when operating the carla first time
+      1;  // Default to DoubleAckerman when operating the carla first time
 
   // ── Publishers ───────────────────────────────────────────────────
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::NavSatFix>::SharedPtr

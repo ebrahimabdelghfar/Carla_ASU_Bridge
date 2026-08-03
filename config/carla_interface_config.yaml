@@ -21,13 +21,13 @@ carla:
   # the simulation headroom.
   manual_control:
     res: "960x540"        # pygame window / display-camera resolution (WIDTHxHEIGHT)
-    render_rate: 20.0     # Hz the display camera renders at (<=0 = every tick)
+    render_rate: 60.0     # Hz the display camera renders at (<=0 = every tick)
 
   # When true, each enabled camera AND the LiDAR is captured by its own dedicated
   # CARLA client (own TCP stream + io_context) instead of sharing the main client.
   # Parallelizes streaming and holds per-sensor Hz with many sensors enabled.
   dedicated_clients:
-    enabled: true
+    enabled: false
 
 # ─── World / Town ────────────────────────────────────────────────────────────
 world:
@@ -363,7 +363,7 @@ tf:
 cameras:
   # Back camera (rear‑facing)
   - name: "bm_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     type: "sensor.camera.rgb"
     spawn_point: { x: -0.655803, y: 0.0, z: 0.682332, roll: -0.00, pitch: 0.00, yaw: -180.00 }
@@ -376,7 +376,7 @@ cameras:
     topic_camera_info: "/bm_camera/camera_info"
   # Back‑left camera
   - name: "br_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     type: "sensor.camera.rgb"
     spawn_point: { x: 0.429985, y: 0.420937, z: 0.795485, roll: -0.00, pitch: 0.00, yaw: 110.00 }
@@ -389,7 +389,7 @@ cameras:
     topic_camera_info: "/br_camera/camera_info"  
   # Back‑right camera
   - name: "bl_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT" 
     type: "sensor.camera.rgb"
     spawn_point: { x: 0.429985, y: -0.420937, z: 0.795485, roll: -0.00, pitch: 0.00, yaw: -110.00 }
@@ -402,7 +402,7 @@ cameras:
     topic_camera_info: "/bl_camera/camera_info"
   # Front camera (forward‑facing)
   - name: "fm_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     type: "sensor.camera.rgb"
     spawn_point: { x: 0.67866, y: 0.000000, z: 0.665524, roll: -0.00, pitch: 0.00, yaw: -0.00 }
@@ -415,7 +415,7 @@ cameras:
     topic_camera_info: "/fm_camera/camera_info"
   # Front‑left camera
   - name: "fr_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     type: "sensor.camera.rgb"
     spawn_point: { x: 0.588435, y: 0.272428, z: 0.810697, roll: -0.00, pitch: -15.00, yaw: 30.00 }
@@ -428,7 +428,7 @@ cameras:
     topic_camera_info: "/fr_camera/camera_info"
   # Front‑right camera
   - name: "fl_camera"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     type: "sensor.camera.rgb"
     spawn_point: { x: 0.589702, y: -0.271414, z: 0.811094, roll: 0.00, pitch: -15.00, yaw: -30.00 }
@@ -483,7 +483,7 @@ third_person_view:
 #                    `use_compute: true` selects the GPU compute-shader path.
 lidars:
   - name: "top_lidar"
-    enabled: true
+    enabled: false
     qos_reliability: "BEST_EFFORT"
     lidar_type: "rotary"     # "rotary" | "solid_state" | "gpu"
     use_compute: false        # gpu only: true = GPU compute-shader sampling path
