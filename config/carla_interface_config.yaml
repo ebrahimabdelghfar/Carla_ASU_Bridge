@@ -609,22 +609,26 @@ ground_truth_boxes:
 # Scale factors for converting ICD commands → CARLA VehicleControl.
 control:
   # Control source mode: "vehicle_interface" or "ackermann_drive"
-  source: "vehicle_interface"
+  source: "ackermann_drive"
   
   # PID for linear velocity (m/s) tracking
   speed_pid:
-    kp: 10.0
-    ki: 0.1
-    kd: 0.05
+    kp: 1.0
+    ki: 0.0
+    kd: 0.0
     max_integral: 1.0
     max_output: 1.0
 
-  # PID for steering angle (rad) tracking
+  # PID for steering angle (rad) tracking, closed on real front-wheel angle
+  # (GetWheelSteerAngle, sampled at telemetry.update_rate). kp=10 saturated
+  # max_output on nearly any error and had zero kd damping -> steering
+  # slammed full-lock and overshot every time, oscillating. Retune here if
+  # response still overshoots (raise kd) or feels sluggish (raise kp).
   steer_pid:
-    kp: 10.0
+    kp: 0.1
     ki: 0.0
     kd: 0.0
-    max_integral: 0.0
+    max_integral: 1.0
     max_output: 1.0
 
   # PID for steering angle velocity (rad/s) tracking
@@ -696,7 +700,7 @@ ros2:
     # Emergency brake:/sim/control/brake              std_msgs/Bool
     control_brake:               "control/brake"
     # Ackermann drive: /sim/control/ackermann_drive   ackermann_msgs/AckermannDrive
-    control_ackermann:           "control/ackermann_drive"
+    control_ackermann:           "/drive"
     # Spawn point is always /sim/spawn_point (absolute, hardcoded per ICD)
 
   # ── Services ──────────────────────────────────────────────────────────────

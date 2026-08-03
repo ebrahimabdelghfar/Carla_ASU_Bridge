@@ -969,6 +969,20 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   const auto& phys = physics(*v);  // cached, no RPC
   ensure_light_init(*v);           // 1 RPC once, then cached
   uint32_t ls = light_state_;
+
+  // Real front-wheel steer angle, sampled here (telemetry thread, 10 Hz) so
+  // the control loop (20 Hz) can read it lock-free without adding an RPC of
+  // its own. Only sampled for ackermann_drive, which is the only consumer
+  // (steer_pid_ feedback in apply_vehicle_control) — other modes command
+  // steer open-loop and don't need it.
+  if (control_mode_.source == "ackermann_drive") {
+    t_rpc = PerfMonitor::tick();
+    float wheel_angle_deg =
+        -v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::FL_Wheel);
+    perf.record("rpc.GetWheelSteerAngle", t_rpc);
+    measured_steer_deg_.store(wheel_angle_deg, std::memory_order_relaxed);
+  }
+
   // Commanded per-wheel steer (deg, CARLA sign) = ctrl.steer × per-wheel
   // max_steer_angle. Replaces 4× GetWheelSteerAngle blocking game-thread RPCs:
   // steady-state identical (apply side uses the same steer↔angle mapping), and
@@ -1180,17 +1194,17 @@ void CarlaROS2Backend::apply_vehicle_control() {
     ctrl.throttle = (pid_throttle > 0.0) ? std::min(1.0, pid_throttle) : 0.0;
     ctrl.reverse = (target_speed < 0);
 
-    // Simplified steering for now using just proportional angle tracking if
-    // velocity not given/used complexly
-    double steer_error =
-        ack_steering_angle_ - (last_steering_deg_ * M_PI / 180.0);
+    // Real front-wheel angle (sampled on the telemetry thread, see
+    // publish_vehicle_feedback) as feedback, Ackermann sign (left-positive) —
+    // matches ack_steering_angle_'s convention so the error below is a
+    // direct radian delta, not a self-referencing loop off our own last
+    // command (that went unstable at high kp — see steer_pid_ tuning notes
+    // in config, control.steer_pid).
+    double measured_steer_rad =
+        measured_steer_deg_.load(std::memory_order_relaxed) * M_PI / 180.0;
+    double steer_error = ack_steering_angle_ - measured_steer_rad;
     double pid_steer =
         steer_pid_.update(steer_error, control_mode_.steer_pid, now);
-    // Optionally combine with steer_vel_pid if steering velocity is provided
-    if (ack_steering_angle_vel_ != 0.0) {
-      // not a true angular velocity sensor on steering, so we just use the PID
-      // for demonstration
-    }
 
     double target_steer_deg =
         -(ack_steering_angle_ + pid_steer) * 180.0 /

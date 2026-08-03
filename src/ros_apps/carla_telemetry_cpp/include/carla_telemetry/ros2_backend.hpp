@@ -363,6 +363,12 @@ class CarlaROS2Backend {
   double last_steering_deg_ = 0.0;
   bool sim_running_ = true;
 
+  // Real front-wheel steer angle (deg, CARLA sign), sampled on the telemetry
+  // thread via GetWheelSteerAngle. The control loop only reads this atomic —
+  // it never issues the RPC itself, so ackermann_drive's steer PID gets true
+  // physical feedback without adding a blocking call to the control tick.
+  std::atomic<float> measured_steer_deg_{0.0f};
+
   /**
    * @brief Locally cached CARLA simulation state to prevent per-tick blocking
    * RPCs.
