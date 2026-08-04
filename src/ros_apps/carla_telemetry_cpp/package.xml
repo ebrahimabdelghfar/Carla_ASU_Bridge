@@ -26,7 +26,7 @@
   <depend>tf2_ros</depend>
   <depend>builtin_interfaces</depend>
   <depend>carla_msgs</depend>
-  <depend>micropilot_manager_msgs</depend>
+  <depend>sim_manager_msgs</depend>
   <depend>rosgraph_msgs</depend>
 
   <export>

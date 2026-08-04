@@ -23,7 +23,7 @@ find_package(ackermann_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(carla_msgs REQUIRED)
-find_package(micropilot_manager_msgs REQUIRED)
+find_package(sim_manager_msgs REQUIRED)
 find_package(rosgraph_msgs REQUIRED)
 
 # ── yaml-cpp ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ ament_target_dependencies(carla_telemetry_node
   tf2_ros
   builtin_interfaces
   carla_msgs
-  micropilot_manager_msgs
+  sim_manager_msgs
   rosgraph_msgs
 )
 

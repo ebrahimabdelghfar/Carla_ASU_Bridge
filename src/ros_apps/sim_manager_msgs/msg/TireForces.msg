@@ -8,7 +8,7 @@
 builtin_interfaces/Time stamp
 
 string[4]  wheel_names          # ["FL", "FR", "RL", "RR"]
-float64[4] slip_angle           # CARLA telemetry lat_slip per wheel (Magic Formula input)
+float64[4] slip_angle           # rad, CARLA telemetry lat_slip per wheel (CARLA reports degrees; converted here)
 float64[4] slip_ratio           # CARLA telemetry long_slip per wheel (reference/logging)
 float64[4] normal_load          # CARLA telemetry tire_load per wheel, N
 float64[4] lateral_force        # N, Magic Formula output

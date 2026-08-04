@@ -26,7 +26,6 @@
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-#include <micropilot_manager_msgs/msg/tire_forces.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
@@ -38,6 +37,7 @@
 #include <sensor_msgs/msg/nav_sat_status.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
+#include <sim_manager_msgs/msg/tire_forces.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/float32.hpp>
@@ -107,18 +107,19 @@ class CarlaROS2Backend {
   struct TireModelConfig {
     struct Wheel {
       std::string position;  ///< "FL", "FR", "RL", "RR".
-      double B = 10.0;        ///< Magic Formula stiffness factor.
-      double C = 1.9;         ///< Magic Formula shape factor.
-      double E = 0.97;        ///< Magic Formula curvature factor.
-      double mu = 1.6;        ///< Friction coefficient (peak D = mu * tire_load).
+      double B = 10.0;       ///< Magic Formula stiffness factor.
+      double C = 1.9;        ///< Magic Formula shape factor.
+      double E = 0.97;       ///< Magic Formula curvature factor.
+      double mu = 1.6;  ///< Friction coefficient (peak D = mu * tire_load).
     };
-    std::vector<Wheel> wheels;  ///< Per-wheel Magic Formula params, FL/FR/RL/RR.
+    std::vector<Wheel>
+        wheels;  ///< Per-wheel Magic Formula params, FL/FR/RL/RR.
 
     std::string drive_mode =
         "AWD";  ///< Mirrors vehicle.drive_mode ("AWD"/"FWD"/"RWD"); gates
                 ///< which wheels receive motor force.
-    double torque_constant_Nm = 250.0;   ///< Motor torque at throttle = 1.0.
-    double gear_ratio = 8.0;             ///< Motor-to-wheel gear ratio.
+    double torque_constant_Nm = 250.0;    ///< Motor torque at throttle = 1.0.
+    double gear_ratio = 8.0;              ///< Motor-to-wheel gear ratio.
     double drivetrain_efficiency = 0.95;  ///< Drivetrain mechanical efficiency.
 
     TireModelConfig() = default;
@@ -252,10 +253,14 @@ class CarlaROS2Backend {
    * @param telem Vehicle telemetry snapshot (from GetTelemetryData()).
    * @param ctrl Vehicle control snapshot (from GetControl()).
    * @param phys Vehicle physics control (cached, from GetPhysicsControl()).
+   * @param speed_mps Signed forward speed (m/s), used to gate the Magic
+   * Formula near standstill where CARLA's slip-angle telemetry is
+   * numerically unstable (near 0/0).
    */
   void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem,
                            const carla::rpc::VehicleControl& ctrl,
-                           const carla::rpc::VehiclePhysicsControl& phys);
+                           const carla::rpc::VehiclePhysicsControl& phys,
+                           double speed_mps);
   /**
    * @brief Publish vehicle state data.
    */
@@ -513,7 +518,7 @@ class CarlaROS2Backend {
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       motors_pub_;
   rclcpp_lifecycle::LifecyclePublisher<
-      micropilot_manager_msgs::msg::TireForces>::SharedPtr tire_forces_pub_;
+      sim_manager_msgs::msg::TireForces>::SharedPtr tire_forces_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       vehicle_state_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr

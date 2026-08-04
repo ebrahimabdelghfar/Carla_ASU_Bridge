@@ -5,10 +5,10 @@
 #include <atomic>
 #include <condition_variable>
 #include <memory>
-#include <micropilot_manager_msgs/msg/component_health.hpp>
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <sim_manager_msgs/msg/component_health.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <thread>
 #include <vector>
@@ -187,7 +187,7 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
   std::unique_ptr<CarlaDynamicProps> dynamic_props_;
 
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<
-      micropilot_manager_msgs::msg::ComponentHealth>>
+      sim_manager_msgs::msg::ComponentHealth>>
       health_pub_;
 
   /**

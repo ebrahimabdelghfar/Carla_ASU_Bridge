@@ -169,7 +169,7 @@ All topic names use an optional custom namespace (e.g., `/sim/`) which is config
 | `/<namespace>/lidar/<lidar_name>/points`| `sensor_msgs/msg/PointCloud2` | LiDAR pointcloud |
 | `/<namespace>/feedback/motors` | `std_msgs/msg/String` | JSON with speed/torque/brake for all 4 wheels |
 | `/<namespace>/feedback/vehicle_state` | `std_msgs/msg/String` | JSON with light, blinker, and steering state |
-| `/micropilot_system_manager_node/component_health` | `micropilot_manager_msgs/msg/ComponentHealth` | Statuses of the simulator node |
+| `/micropilot_system_manager_node/component_health` | `sim_manager_msgs/msg/ComponentHealth` | Statuses of the simulator node |
 
 #### motor data format
 

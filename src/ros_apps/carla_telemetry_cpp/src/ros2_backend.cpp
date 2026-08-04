@@ -89,11 +89,10 @@ CarlaROS2Backend::CarlaROS2Backend(
   motors_pub_ = node_->create_publisher<std_msgs::msg::String>(
       topic(get_or(topics_cfg_, "feedback_motors", "feedback/motors")),
       qos_rel);
-  tire_forces_pub_ =
-      node_->create_publisher<micropilot_manager_msgs::msg::TireForces>(
-          topic(get_or(topics_cfg_, "feedback_tire_forces",
-                       "feedback/tire_forces")),
-          qos_rel);
+  tire_forces_pub_ = node_->create_publisher<sim_manager_msgs::msg::TireForces>(
+      topic(
+          get_or(topics_cfg_, "feedback_tire_forces", "feedback/tire_forces")),
+      qos_rel);
   vehicle_state_pub_ = node_->create_publisher<std_msgs::msg::String>(
       topic(get_or(topics_cfg_, "feedback_vehicle_state",
                    "feedback/vehicle_state")),
@@ -343,7 +342,8 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
             topic(get_or(topics_cfg_, "control_ackermann",
                          "control/ackermann_drive")),
             qos_rel,
-            [this](const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg) {
+            [this](const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr
+                       msg) {
               ack_speed_ = msg->drive.speed;
               ack_steering_angle_ = msg->drive.steering_angle;
               ack_steering_angle_vel_ = msg->drive.steering_angle_velocity;
@@ -808,13 +808,20 @@ void CarlaROS2Backend::publish_motors() {
 void CarlaROS2Backend::publish_tire_forces(
     const carla::rpc::VehicleTelemetryData& telem,
     const carla::rpc::VehicleControl& ctrl,
-    const carla::rpc::VehiclePhysicsControl& phys) {
+    const carla::rpc::VehiclePhysicsControl& phys, double speed_mps) {
   if (telem.wheels.size() < 4 || phys.wheels.size() < 4 ||
       tire_model_cfg_.wheels.size() < 4) {
     return;
   }
 
-  micropilot_manager_msgs::msg::TireForces msg;
+  // Below this forward speed, CARLA's own lat_slip = atan2(v_lat, |v_long|)
+  // is near 0/0 and numerically unstable — tiny wheel scrub reads as a huge
+  // slip angle, feeding a spurious nonzero lateral force at standstill/spawn.
+  // Gate the Magic Formula off until the car is actually rolling.
+  constexpr double kMinRollingSpeedMps = 0.5;
+  bool rolling = std::abs(speed_mps) > kMinRollingSpeedMps;
+
+  sim_manager_msgs::msg::TireForces msg;
   msg.stamp = node_->get_clock()->now();
   msg.wheel_names = {"FL", "FR", "RL", "RR"};
 
@@ -824,7 +831,15 @@ void CarlaROS2Backend::publish_tire_forces(
 
     // ── Lateral force: Magic Formula (Pacejka), fed by CARLA's own slip
     // telemetry — independent of CARLA's internal tire force output.
-    double alpha = w.lat_slip;
+    // CARLA's WheelTelemetryData.lat_slip is in DEGREES (confirmed empirically:
+    // driving dead straight reports ~0.5-0.6 constant, physically-sane residual
+    // scrub; treating that as radians (~33deg) would mean permanent near-lock
+    // slip while going straight). The Magic Formula's B/C/E constants below are
+    // tuned for a radian input, so alpha must be converted before use — feeding
+    // it raw drove Bx deep into the saturated regime, where any real slip-angle
+    // wobble during a turn snapped lateral_force between its +D/-D extremes
+    // instead of scaling smoothly.
+    double alpha = rolling ? (w.lat_slip * M_PI / 180.0) : 0.0;
     double D = mf.mu * w.tire_load;
     double Bx = mf.B * alpha;
     double lateral_force =
@@ -832,23 +847,35 @@ void CarlaROS2Backend::publish_tire_forces(
 
     // ── Longitudinal force: motor-torque-constant model, independent of
     // CARLA's own engine torque_curve. Driven axle follows vehicle.drive_mode
-    // (FL/FR = 0/1, RL/RR = 2/3), same convention as CarlaVehicle::apply_physics.
+    // (FL/FR = 0/1, RL/RR = 2/3), same convention as
+    // CarlaVehicle::apply_physics. Sign follows ctrl.reverse — CARLA's
+    // throttle is always >= 0, direction comes from the reverse flag, not
+    // the throttle sign.
     bool driven = (i < 2) ? (tire_model_cfg_.drive_mode != "RWD")
                           : (tire_model_cfg_.drive_mode != "FWD");
     double radius_m = phys.wheels[i].radius / 100.0;
-    double motor_force =
-        driven ? (tire_model_cfg_.torque_constant_Nm * ctrl.throttle *
-                  tire_model_cfg_.gear_ratio *
-                  tire_model_cfg_.drivetrain_efficiency) /
-                     radius_m
-              : 0.0;
-    double brake_force = ctrl.brake * phys.wheels[i].max_brake_torque / radius_m;
+    double motor_dir = ctrl.reverse ? -1.0 : 1.0;
+    double motor_force = driven
+                             ? motor_dir *
+                                   (tire_model_cfg_.torque_constant_Nm *
+                                    ctrl.throttle * tire_model_cfg_.gear_ratio *
+                                    tire_model_cfg_.drivetrain_efficiency) /
+                                   radius_m
+                             : 0.0;
+    // Brake opposes current motion, not the throttle direction — negative
+    // when rolling forward, positive when rolling backward, ~0 at
+    // standstill (no direction to oppose yet).
+    double brake_dir = (speed_mps > kMinRollingSpeedMps)
+                           ? -1.0
+                           : (speed_mps < -kMinRollingSpeedMps ? 1.0 : 0.0);
+    double brake_force =
+        brake_dir * ctrl.brake * phys.wheels[i].max_brake_torque / radius_m;
 
     msg.slip_angle[i] = alpha;
     msg.slip_ratio[i] = w.long_slip;
     msg.normal_load[i] = w.tire_load;
     msg.lateral_force[i] = lateral_force;
-    msg.longitudinal_force[i] = motor_force - brake_force;
+    msg.longitudinal_force[i] = motor_force + brake_force;
   }
 
   tire_forces_pub_->publish(msg);
@@ -1060,12 +1087,14 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   auto forward = v->GetTransform().GetForwardVector();
   perf.record("rpc.GetTransform", t_rpc);
 
-  // ── Speed (signed by forward direction) ─────────────────────────────
-  double speed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y +
-                           velocity.z * velocity.z);
-  if (velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z <
-      0.0)
-    speed = -speed;
+  // ── Speed (forward-projected, signed) ────────────────────────────────
+  // Dot with the forward vector directly rather than taking the full 3D
+  // velocity magnitude and re-signing it: magnitude folds in lateral slip
+  // and vertical (suspension squat/bounce) velocity components, which
+  // spikes under acceleration/cornering and was feeding false speed noise
+  // into the ackermann speed PID and the tire-force rolling gate/brake_dir.
+  double speed =
+      velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
   {
     std_msgs::msg::Float32 m;
     m.data = static_cast<float>(speed);
@@ -1124,7 +1153,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   }
 
   // ── Ground-truth tire forces (Magic Formula + motor model) ──────────
-  publish_tire_forces(telem, ctrl, phys);
+  publish_tire_forces(telem, ctrl, phys, speed);
 
   // ── Vehicle-state JSON (cached light bitmask) ───────────────────────
   {
@@ -1232,17 +1261,22 @@ void CarlaROS2Backend::apply_vehicle_control() {
   if (control_mode_.source == "ackermann_drive") {
     rclcpp::Time now = node_->now();
     auto velocity = v->GetVelocity();
-    double current_speed =
-        std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y +
-                  velocity.z * velocity.z);
+    auto forward_vec = v->GetTransform().GetForwardVector();
+    // Forward-projected, signed speed — NOT full 3D velocity magnitude.
+    // Magnitude folds in lateral slip and vertical (suspension
+    // squat/bounce) velocity, which spikes under acceleration/cornering;
+    // feeding that noise into a kp=1, kd=0 P-controller with no smoothing
+    // made pid_throttle (and the longitudinal_force it drives) swing
+    // wildly tick to tick even in a straight, steady-throttle run.
+    double current_speed = velocity.x * forward_vec.x +
+                           velocity.y * forward_vec.y +
+                           velocity.z * forward_vec.z;
     double target_speed = ack_speed_;
     if (control_mode_.max_velocity_ms > 0.0) {
       target_speed = std::clamp(target_speed, -control_mode_.max_velocity_ms,
                                 control_mode_.max_velocity_ms);
     }
     double speed_error = target_speed - current_speed;
-    if (target_speed < 0.0)
-      speed_error = target_speed + current_speed;  // rough handle reverse
 
     double pid_throttle =
         speed_pid_.update(speed_error, control_mode_.speed_pid, now);

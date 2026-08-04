@@ -8,7 +8,7 @@ carla:
   # Set to false to run in asynchronous mode (world ticks on its own clock).
   synchronous_mode: true
   # Applied in BOTH sync and async. In async this is the "async fixed step":
-  fixed_delta_seconds: 0.05    # 20 Hz world physics step
+  fixed_delta_seconds: 0.033    # 20 Hz world physics step
 
   # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
   # Requires pygame and a display.

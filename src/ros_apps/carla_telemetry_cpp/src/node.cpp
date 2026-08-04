@@ -75,7 +75,7 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
   // Create the health publisher
   if (!health_pub_) {
     health_pub_ =
-        this->create_publisher<micropilot_manager_msgs::msg::ComponentHealth>(
+        this->create_publisher<sim_manager_msgs::msg::ComponentHealth>(
             "/micropilot_system_manager_node/component_health", 1);
   }
 
@@ -345,7 +345,8 @@ void CarlaTelemetryNode::setup_vehicle() {
     tire_model_cfg.wheels.push_back(mfw);
   }
   auto motor = tm["motor"];
-  tire_model_cfg.torque_constant_Nm = motor["torque_constant_Nm"].as<double>(250.0);
+  tire_model_cfg.torque_constant_Nm =
+      motor["torque_constant_Nm"].as<double>(250.0);
   tire_model_cfg.gear_ratio = motor["gear_ratio"].as<double>(8.0);
   tire_model_cfg.drivetrain_efficiency =
       motor["drivetrain_efficiency"].as<double>(0.95);
@@ -1186,7 +1187,7 @@ void CarlaTelemetryNode::control_loop(double hz) {
     }
 
     if (health_pub_ && health_pub_->is_activated()) {
-      micropilot_manager_msgs::msg::ComponentHealth msg;
+      sim_manager_msgs::msg::ComponentHealth msg;
       msg.component_id = this->get_name();
       if (!vehicle_ || !vehicle_->is_running()) {
         msg.status = msg.ERROR;

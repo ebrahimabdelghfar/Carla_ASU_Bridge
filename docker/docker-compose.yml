@@ -22,7 +22,7 @@ services:
       - ../src/ros_apps/carla_telemetry:/micropilot/micropilot_sim/src/ros_apps/carla_telemetry
       - ../src/ros_apps/carla_telemetry_cpp:/micropilot/micropilot_sim/src/ros_apps/carla_telemetry_cpp
       - ../src/ros_apps/ros-carla-msgs:/micropilot/micropilot_sim/src/ros_apps/ros-carla-msgs
-      - ../thirdparty_lib/micropilot_manager_msgs:/micropilot/micropilot_sim/src/ros_apps/micropilot_manager_msgs
+      - ../thirdparty_lib/sim_manager_msgs:/micropilot/micropilot_sim/src/ros_apps/sim_manager_msgs
       - ../thirdparty_lib/carla:/micropilot/micropilot_sim/thirdparty_lib/carla
       - ../Carla_Micropolis:/micropilot/micropilot_sim/Carla_Micropolis
       - ../scripts:/micropilot/micropilot_sim/scripts

@@ -1,7 +1,7 @@
 # ─── Ground-Truth Tire Force Model ────────────────────────────────────────────
 # Independent of CARLA's internal tire physics. Computed each telemetry tick
 # from CARLA's own per-wheel slip/load telemetry (WheelTelemetryData) and
-# published on feedback/tire_forces (micropilot_manager_msgs/TireForces).
+# published on feedback/tire_forces (sim_manager_msgs/TireForces).
 #
 # Wheel order everywhere below: FL, FR, RL, RR (matches vehicle.physics.wheels
 # in carla_interface_config.yaml).

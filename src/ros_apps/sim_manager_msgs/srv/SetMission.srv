@@ -1,7 +1,7 @@
 # Accept a set of mission waypoints with configuration
 # Calls MissionManager::set_waypoints()
 
-micropilot_manager_msgs/Waypoint[] waypoints
+sim_manager_msgs/Waypoint[] waypoints
 
 # Mission configuration
 uint32  total_laps                 1
