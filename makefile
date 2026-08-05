@@ -174,6 +174,27 @@ run_track_recorder:
 	ros2 launch track_recorder track_recorder.launch.py
 visualize_track:
 	@python3 src/ros_apps/track_recorder/scripts/visualize_track.py $(WORKSPACE)/src/ros_apps/global_racetrajectory_optimization/inputs/tracks/handling_track_recorded.csv
+RACETRAJ_DIR := $(WORKSPACE)/src/ros_apps/global_racetrajectory_optimization
+RACETRAJ_ENV ?= racetraj
+RACETRAJ_TRACK ?= handling_track_recorded
+RACETRAJ_OPT_TYPE ?= mincurv_iqp
+setup_racetraj_env:
+	@conda create -y -n $(RACETRAJ_ENV) python=3.7
+	@conda run -n $(RACETRAJ_ENV) pip install -r $(RACETRAJ_DIR)/requirements.txt
+	@echo -e "$(GREEN)env '$(RACETRAJ_ENV)' ready — activate with: make activate_racetraj_env$(NC)"
+activate_racetraj_env:
+	@echo "run this in your shell (make cannot mutate your parent shell's env):"
+	@echo "  conda activate $(RACETRAJ_ENV)"
+generate_racetraj:
+	@test -f "$(RACETRAJ_DIR)/inputs/tracks/$(RACETRAJ_TRACK).csv" || \
+		{ echo -e "$(RED)track csv not found: $(RACETRAJ_DIR)/inputs/tracks/$(RACETRAJ_TRACK).csv$(NC)"; exit 1; }
+	@cd $(RACETRAJ_DIR) && RACETRAJ_TRACK=$(RACETRAJ_TRACK) RACETRAJ_OPT_TYPE=$(RACETRAJ_OPT_TYPE) MPLBACKEND=Agg \
+		conda run --no-capture-output -n $(RACETRAJ_ENV) python3 main_globaltraj.py
+	@echo -e "$(GREEN)raceline written to $(RACETRAJ_DIR)/outputs/traj_race_cl.csv$(NC)"
+visualize_racetraj:
+	@conda run --no-capture-output -n $(RACETRAJ_ENV) python3 $(RACETRAJ_DIR)/visualize_racetraj.py \
+		$(RACETRAJ_DIR)/outputs/traj_race_cl.csv \
+		--track-csv $(RACETRAJ_DIR)/inputs/tracks/$(RACETRAJ_TRACK).csv
 W_RIGHT ?= 4.0
 W_LEFT ?= 4.0
 change_track_width:
