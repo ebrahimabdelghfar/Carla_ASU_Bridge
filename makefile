@@ -180,6 +180,9 @@ RACETRAJ_TRACK ?= handling_track_recorded
 RACETRAJ_OPT_TYPE ?= mincurv_iqp
 setup_racetraj_env:
 	@conda create -y -n $(RACETRAJ_ENV) python=3.7
+	@echo -e "$(YELLOW)installing Cython<3 first — quadprog's build breaks against Cython>=3 (bug-005)$(NC)"
+	@conda run -n $(RACETRAJ_ENV) pip install "Cython<3"
+	@conda run -n $(RACETRAJ_ENV) pip install --no-build-isolation --no-cache-dir --no-deps quadprog==0.1.7
 	@conda run -n $(RACETRAJ_ENV) pip install -r $(RACETRAJ_DIR)/requirements.txt
 	@echo -e "$(GREEN)env '$(RACETRAJ_ENV)' ready — activate with: make activate_racetraj_env$(NC)"
 activate_racetraj_env:

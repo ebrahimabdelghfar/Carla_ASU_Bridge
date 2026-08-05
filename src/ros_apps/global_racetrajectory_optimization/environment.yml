@@ -1,0 +1,14 @@
+name: racetraj
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - pip
+  # NOTE: `conda env create -f environment.yml` alone is NOT sufficient to avoid the
+  # quadprog/Cython3 ABI bug (see requirements.txt comment, .wolf/buglog.json bug-005) —
+  # conda batches all `pip:` entries into a single pip invocation, so quadprog still gets
+  # built in an isolated env against a fresh (unpinned) Cython before Cython<3 is actually
+  # installed. Use `make setup_racetraj_env`, which runs the required install steps in the
+  # right order (Cython<3, then quadprog==0.1.7 --no-build-isolation, then requirements.txt).
+  - pip:
+    - -r requirements.txt

@@ -1,5 +1,10 @@
 numpy==1.18.1
 matplotlib==3.3.1
+# Cython<3 must land BEFORE quadprog builds, in its own pip install step, or quadprog's
+# setup.py cythonizes against an isolated-build-fetched Cython>=3 and produces a broken
+# extension (undefined symbol: qpgen2_ mangled as C++). See .wolf/buglog.json bug-005.
+Cython<3
+quadprog==0.1.7
 trajectory_planning_helpers==0.76
 # the following is required for minimum time optimization only
 casadi==3.5.1
