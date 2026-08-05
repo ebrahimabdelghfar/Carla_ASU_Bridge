@@ -1,0 +1,10 @@
+track_recorder:
+  ros__parameters:
+    odom_topic: "/sim/odom"
+    output_csv: "/home/ebrahim/Carla_ASU_Bridge/src/ros_apps/global_racetrajectory_optimization/inputs/tracks/handling_track_recorded.csv"
+    w_tr_right_m: 3.0
+    w_tr_left_m: 3.0
+    record_distance_interval: 0.1
+    enable_loop_closure: true
+    loop_closure_threshold_m: 3.0
+    min_lap_distance_m: 20.0

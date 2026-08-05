@@ -169,6 +169,15 @@ run_sensor_sync_test:
 	@source install/ros_apps/setup.bash && \
 	ros2 run sensor_sync_test sensor_sync_test_node \
 		--ros-args -p config_path:=$(WORKSPACE)/config/carla_interface_config.yaml
+run_track_recorder:
+	@source install/ros_apps/setup.bash && \
+	ros2 launch track_recorder track_recorder.launch.py
+visualize_track:
+	@python3 src/ros_apps/track_recorder/scripts/visualize_track.py $(WORKSPACE)/src/ros_apps/global_racetrajectory_optimization/inputs/tracks/handling_track_recorded.csv
+W_RIGHT ?= 4.0
+W_LEFT ?= 4.0
+change_track_width:
+	@python3 src/ros_apps/track_recorder/scripts/change_track_width.py $(WORKSPACE)/src/ros_apps/global_racetrajectory_optimization/inputs/tracks/handling_track_recorded.csv $(W_RIGHT) $(W_LEFT)
 setup_ros2_workspace: format
 	@bash scripts/ros_apps_build/colcon_build.sh
 setup_docker:
