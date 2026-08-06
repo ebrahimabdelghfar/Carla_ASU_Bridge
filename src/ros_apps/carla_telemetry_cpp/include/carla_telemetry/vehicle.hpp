@@ -136,6 +136,16 @@ class CarlaVehicle {
   };
 
   /**
+   * @brief Tire friction assigned to non-driven wheels to emulate FWD/RWD on a
+   * CARLA vehicle that is physically AWD.
+   *
+   * @details Also honoured by runtime friction changes (see
+   * CarlaROS2Backend::apply_tire_friction) so commanding a new ground friction
+   * does not silently turn an FWD/RWD vehicle back into AWD.
+   */
+  static constexpr float kNonDrivenTireFriction = 0.1f;
+
+  /**
    * @brief Construct a new CarlaVehicle object, establishing server connection
    * and spawning the ego vehicle.
    *

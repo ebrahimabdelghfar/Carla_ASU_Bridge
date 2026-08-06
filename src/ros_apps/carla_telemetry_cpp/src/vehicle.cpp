@@ -261,12 +261,12 @@ void CarlaVehicle::apply_physics(const PhysicsConfig& phys) {
 
   // Drive mode: adjust tire friction for FWD/RWD
   if (phys.drive_mode == "FWD" && wheels.size() >= 4) {
-    wheels[2].tire_friction = 0.1f;
-    wheels[3].tire_friction = 0.1f;
+    wheels[2].tire_friction = kNonDrivenTireFriction;
+    wheels[3].tire_friction = kNonDrivenTireFriction;
     pc.SetWheels(wheels);
   } else if (phys.drive_mode == "RWD" && wheels.size() >= 4) {
-    wheels[0].tire_friction = 0.1f;
-    wheels[1].tire_friction = 0.1f;
+    wheels[0].tire_friction = kNonDrivenTireFriction;
+    wheels[1].tire_friction = kNonDrivenTireFriction;
     pc.SetWheels(wheels);
   }
 

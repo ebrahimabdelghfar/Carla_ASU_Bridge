@@ -158,6 +158,26 @@ CarlaROS2Backend::CarlaROS2Backend(
       },
       sub_opts);
 
+  // Runtime environment tuning: tire-to-ground friction and aerodynamic drag.
+  // Both go straight to ApplyPhysicsControl, so they take effect on the next
+  // physics step without respawning the vehicle.
+  tire_friction_sub_ = node_->create_subscription<std_msgs::msg::Float32>(
+      topic(get_or(topics_cfg_, "control_tire_friction",
+                   "control/tire_friction")),
+      qos_rel,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        apply_tire_friction(msg->data);
+      },
+      sub_opts);
+  drag_sub_ = node_->create_subscription<std_msgs::msg::Float32>(
+      topic(get_or(topics_cfg_, "control_drag_coefficient",
+                   "control/drag_coefficient")),
+      qos_rel,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        apply_drag_coefficient(msg->data);
+      },
+      sub_opts);
+
   // Battery services
   auto svc = services_cfg_;
   start_drain_srv_ = node_->create_service<std_srvs::srv::Trigger>(
@@ -255,8 +275,6 @@ CarlaROS2Backend::CarlaROS2Backend(
         if (req->data && !manual_control_override_) {
           manual_control_override_ = true;
           original_control_mode_ = control_mode_;
-          control_mode_.speed_pid = PIDConfig{};
-          control_mode_.steer_pid = PIDConfig{};
           control_mode_.steer_vel_pid = PIDConfig{};
           control_mode_.rpm_pid = PIDConfig{};
           resp->message = "Manual control enabled (PID zeroed)";
@@ -270,9 +288,9 @@ CarlaROS2Backend::CarlaROS2Backend(
           ack_speed_ = 0.0;
           ack_steering_angle_ = 0.0;
           ack_steering_angle_vel_ = 0.0;
+          ack_acceleration_ = 0.0;
+          ack_jerk_ = 0.0;
           rpm_pid_ = PIDState{};
-          speed_pid_ = PIDState{};
-          steer_pid_ = PIDState{};
           steer_vel_pid_ = PIDState{};
           resp->message =
               "Manual control disabled (PID restored, commands reset)";
@@ -319,6 +337,21 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
   max_steer_deg_ = max_steer_deg;
   control_mode_ = mode_cfg;
 
+  if (control_mode_.source == "ackermann_drive" && vehicle_actor_) {
+    auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+    if (v) {
+      const auto& ac = control_mode_.ackermann_controller;
+      carla::rpc::AckermannControllerSettings settings;
+      settings.speed_kp = static_cast<float>(ac.speed_kp);
+      settings.speed_ki = static_cast<float>(ac.speed_ki);
+      settings.speed_kd = static_cast<float>(ac.speed_kd);
+      settings.accel_kp = static_cast<float>(ac.accel_kp);
+      settings.accel_ki = static_cast<float>(ac.accel_ki);
+      settings.accel_kd = static_cast<float>(ac.accel_kd);
+      v->ApplyAckermannControllerSettings(settings);
+    }
+  }
+
   auto qos_rel = rclcpp::QoS(1).reliable();
   rclcpp::SubscriptionOptions sub_opts;
   sub_opts.callback_group = cb_group_;
@@ -347,6 +380,8 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
               ack_speed_ = msg->drive.speed;
               ack_steering_angle_ = msg->drive.steering_angle;
               ack_steering_angle_vel_ = msg->drive.steering_angle_velocity;
+              ack_acceleration_ = msg->drive.acceleration;
+              ack_jerk_ = msg->drive.jerk;
             },
             sub_opts);
   } else {
@@ -840,7 +875,11 @@ void CarlaROS2Backend::publish_tire_forces(
     // wobble during a turn snapped lateral_force between its +D/-D extremes
     // instead of scaling smoothly.
     double alpha = rolling ? (w.lat_slip * M_PI / 180.0) : 0.0;
-    double D = mf.mu * w.tire_load;
+    // Runtime friction commanded on the tire_friction topic overrides the yaml
+    // mu — one coefficient drives both CARLA's tire model and this one.
+    double mu_live = tire_mu_override_.load(std::memory_order_relaxed);
+    double mu = (mu_live >= 0.0) ? mu_live : mf.mu;
+    double D = mu * w.tire_load;
     double Bx = mf.B * alpha;
     double lateral_force =
         D * std::sin(mf.C * std::atan(Bx - mf.E * (Bx - std::atan(Bx))));
@@ -854,8 +893,15 @@ void CarlaROS2Backend::publish_tire_forces(
     bool driven = (i < 2) ? (tire_model_cfg_.drive_mode != "RWD")
                           : (tire_model_cfg_.drive_mode != "FWD");
     double radius_m = phys.wheels[i].radius / 100.0;
+    // ctrl (= GetControl()) only reflects the real throttle/brake command
+    // "if the ackermann control is inactive" (CARLA docs) — while
+    // ackermann_drive drives the vehicle via ApplyAckermannControl, CARLA
+    // computes throttle/brake internally and never exposes them back, so
+    // ctrl.throttle/ctrl.brake are stale here. Report 0 rather than a
+    // frozen, possibly-misleading motor/brake force.
+    bool ctrl_valid = control_mode_.source != "ackermann_drive";
     double motor_dir = ctrl.reverse ? -1.0 : 1.0;
-    double motor_force = driven
+    double motor_force = (driven && ctrl_valid)
                              ? motor_dir *
                                    (tire_model_cfg_.torque_constant_Nm *
                                     ctrl.throttle * tire_model_cfg_.gear_ratio *
@@ -868,8 +914,10 @@ void CarlaROS2Backend::publish_tire_forces(
     double brake_dir = (speed_mps > kMinRollingSpeedMps)
                            ? -1.0
                            : (speed_mps < -kMinRollingSpeedMps ? 1.0 : 0.0);
-    double brake_force =
-        brake_dir * ctrl.brake * phys.wheels[i].max_brake_torque / radius_m;
+    double brake_force = ctrl_valid ? brake_dir * ctrl.brake *
+                                          phys.wheels[i].max_brake_torque /
+                                          radius_m
+                                    : 0.0;
 
     msg.slip_angle[i] = alpha;
     msg.slip_ratio[i] = w.long_slip;
@@ -1004,12 +1052,82 @@ void CarlaROS2Backend::publish_optical_transform(const std::string& parent,
 
 // ── Cached CARLA state helpers ───────────────────────────────────────
 
-const carla::rpc::VehiclePhysicsControl& CarlaROS2Backend::physics(
+carla::rpc::VehiclePhysicsControl CarlaROS2Backend::physics(
     carla::client::Vehicle& v) {
-  // Static after spawn — fetched exactly once even across threads.
-  std::call_once(physics_once_,
-                 [&] { cached_physics_ = v.GetPhysicsControl(); });
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  // Fetched once, then served from the cache until a runtime friction/drag
+  // command refreshes it. Copied out so callers never touch the cache while
+  // apply_tire_friction/apply_drag_coefficient rewrites it.
+  if (!physics_cached_) {
+    cached_physics_ = v.GetPhysicsControl();
+    physics_cached_ = true;
+  }
   return cached_physics_;
+}
+
+void CarlaROS2Backend::apply_tire_friction(float friction) {
+  if (!vehicle_actor_) return;
+  auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+  if (!v) return;
+  if (!std::isfinite(friction) || friction < 0.0f) {
+    RCLCPP_WARN(node_->get_logger(),
+                "[CarlaROS2Backend] Ignoring tire_friction=%.3f (must be "
+                "finite and >= 0).",
+                friction);
+    return;
+  }
+
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  // Re-read from the server instead of editing the cache: manual_control or
+  // any other client may have changed physics since the last fetch, and
+  // ApplyPhysicsControl writes the whole struct back.
+  auto pc = v->GetPhysicsControl();
+  auto wheels = pc.GetWheels();
+  const std::string& drive_mode = tire_model_cfg_.drive_mode;
+  for (size_t i = 0; i < wheels.size(); ++i) {
+    bool driven = (i < 2) ? (drive_mode != "RWD") : (drive_mode != "FWD");
+    wheels[i].tire_friction =
+        driven ? friction : CarlaVehicle::kNonDrivenTireFriction;
+  }
+  pc.SetWheels(wheels);
+  v->ApplyPhysicsControl(pc);
+  cached_physics_ = pc;
+  physics_cached_ = true;
+
+  // Unified friction: the ground-truth Magic Formula peak (D = mu * tire_load)
+  // uses the same coefficient as CARLA's own tire model, so /sim/feedback/
+  // tire_forces reflects the commanded grip instead of the static yaml mu.
+  tire_mu_override_.store(static_cast<double>(friction),
+                          std::memory_order_relaxed);
+
+  RCLCPP_INFO(node_->get_logger(),
+              "[CarlaROS2Backend] tire_friction = %.3f (drive_mode=%s, "
+              "Magic Formula mu unified to the same value).",
+              friction, drive_mode.c_str());
+}
+
+void CarlaROS2Backend::apply_drag_coefficient(float drag) {
+  if (!vehicle_actor_) return;
+  auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+  if (!v) return;
+  if (!std::isfinite(drag) || drag < 0.0f) {
+    RCLCPP_WARN(
+        node_->get_logger(),
+        "[CarlaROS2Backend] Ignoring drag_coefficient=%.3f (must be finite "
+        "and >= 0).",
+        drag);
+    return;
+  }
+
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  auto pc = v->GetPhysicsControl();
+  pc.drag_coefficient = drag;
+  v->ApplyPhysicsControl(pc);
+  cached_physics_ = pc;
+  physics_cached_ = true;
+
+  RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] drag_coefficient = %.3f",
+              drag);
 }
 
 void CarlaROS2Backend::ensure_light_init(carla::client::Vehicle& v) {
@@ -1051,35 +1169,41 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   ensure_light_init(*v);           // 1 RPC once, then cached
   uint32_t ls = light_state_;
 
-  // Real front-wheel steer angle, sampled here (telemetry thread, 10 Hz) so
-  // the control loop (20 Hz) can read it lock-free without adding an RPC of
-  // its own. Only sampled for ackermann_drive, which is the only consumer
-  // (steer_pid_ feedback in apply_vehicle_control) — other modes command
-  // steer open-loop and don't need it.
-  if (control_mode_.source == "ackermann_drive") {
+  // Per-wheel steer angle (deg, CARLA sign) for the echo/JointState/Motors
+  // telemetry below. In ackermann_drive, the vehicle is driven via
+  // Vehicle::ApplyAckermannControl, and ctrl (= GetControl()) only reflects
+  // the real command "if the ackermann control is inactive" — i.e. it's
+  // stale here. Sample the real per-wheel angle via GetWheelSteerAngle
+  // instead (4 RPCs, telemetry thread only, 10 Hz). Other modes still derive
+  // it from ctrl.steer × max_steer_angle to avoid those RPCs, since ctrl is
+  // authoritative there.
+  float rawFL, rawFR, rawRL, rawRR;
+  bool ctrl_valid_for_telemetry = control_mode_.source != "ackermann_drive";
+  if (!ctrl_valid_for_telemetry) {
     t_rpc = PerfMonitor::tick();
-    float wheel_angle_deg =
-        -v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::FL_Wheel);
+    rawFL = v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::FL_Wheel);
+    rawFR = v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::FR_Wheel);
+    rawRL = v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::BL_Wheel);
+    rawRR = v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::BR_Wheel);
     perf.record("rpc.GetWheelSteerAngle", t_rpc);
-    measured_steer_deg_.store(wheel_angle_deg, std::memory_order_relaxed);
+  } else {
+    rawFL =
+        ctrl.steer *
+        (phys.wheels.size() > 0 ? phys.wheels[0].max_steer_angle : 0.0f);
+    rawFR =
+        ctrl.steer *
+        (phys.wheels.size() > 1 ? phys.wheels[1].max_steer_angle : 0.0f);
+    rawRL =
+        ctrl.steer *
+        (phys.wheels.size() > 2 ? phys.wheels[2].max_steer_angle : 0.0f);
+    rawRR =
+        ctrl.steer *
+        (phys.wheels.size() > 3 ? phys.wheels[3].max_steer_angle : 0.0f);
   }
-
-  // Commanded per-wheel steer (deg, CARLA sign) = ctrl.steer × per-wheel
-  // max_steer_angle. Replaces 4× GetWheelSteerAngle blocking game-thread RPCs:
-  // steady-state identical (apply side uses the same steer↔angle mapping), and
-  // frees the CARLA game thread that also renders the cameras + raycasts LiDAR.
-  float rawFL =
-      ctrl.steer *
-      (phys.wheels.size() > 0 ? phys.wheels[0].max_steer_angle : 0.0f);
-  float rawFR =
-      ctrl.steer *
-      (phys.wheels.size() > 1 ? phys.wheels[1].max_steer_angle : 0.0f);
-  float rawRL =
-      ctrl.steer *
-      (phys.wheels.size() > 2 ? phys.wheels[2].max_steer_angle : 0.0f);
-  float rawRR =
-      ctrl.steer *
-      (phys.wheels.size() > 3 ? phys.wheels[3].max_steer_angle : 0.0f);
+  // ctrl.brake is likewise stale in ackermann_drive (CARLA's native
+  // controller computes brake internally and never exposes it back) — report
+  // 0 rather than a frozen, possibly-misleading value.
+  float telemetry_brake = ctrl_valid_for_telemetry ? ctrl.brake : 0.0f;
   t_rpc = PerfMonitor::tick();
   auto velocity = v->GetVelocity();  // cheap (snapshot cache)
   perf.record("rpc.GetVelocity", t_rpc);
@@ -1095,6 +1219,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   // into the ackermann speed PID and the tire-force rolling gate/brake_dir.
   double speed =
       velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
+  measured_speed_ms_.store(speed, std::memory_order_relaxed);
   {
     std_msgs::msg::Float32 m;
     m.data = static_cast<float>(speed);
@@ -1143,10 +1268,10 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     nlohmann::json j = {
         {"timestamp", now.seconds() * 1000.0},
         {"frame_id", "Motors_Data"},
-        {"front_left", wheel(telem.wheels[0], rFL, rawFL, ctrl.brake)},
-        {"front_right", wheel(telem.wheels[1], rFR, rawFR, ctrl.brake)},
-        {"back_left", wheel(telem.wheels[2], rRL, rawRL, ctrl.brake)},
-        {"back_right", wheel(telem.wheels[3], rRR, rawRR, ctrl.brake)}};
+        {"front_left", wheel(telem.wheels[0], rFL, rawFL, telemetry_brake)},
+        {"front_right", wheel(telem.wheels[1], rFR, rawFR, telemetry_brake)},
+        {"back_left", wheel(telem.wheels[2], rRL, rawRL, telemetry_brake)},
+        {"back_right", wheel(telem.wheels[3], rRR, rawRR, telemetry_brake)}};
     std_msgs::msg::String m;
     m.data = j.dump();
     motors_pub_->publish(m);
@@ -1243,7 +1368,6 @@ void CarlaROS2Backend::apply_vehicle_control() {
     last_steering_deg_ = 0.0;
     // Ensure PID integral doesn't wind up while braking
     rpm_pid_.integral = 0.0;
-    speed_pid_.integral = 0.0;
     // Brake lights on (cached — no per-tick GetLightState)
     set_light_bit(
         *v,
@@ -1252,57 +1376,56 @@ void CarlaROS2Backend::apply_vehicle_control() {
     return;
   }
 
-  t_rpc = PerfMonitor::tick();
-  carla::rpc::VehicleControl ctrl = v->GetControl();
-  perf.record("rpc.GetControl", t_rpc);
-
   // Note: cmd_brake_ case is handled above (early return with brake applied).
   // If we reach here, brake is NOT active.
   if (control_mode_.source == "ackermann_drive") {
-    rclcpp::Time now = node_->now();
-    auto velocity = v->GetVelocity();
-    auto forward_vec = v->GetTransform().GetForwardVector();
-    // Forward-projected, signed speed — NOT full 3D velocity magnitude.
-    // Magnitude folds in lateral slip and vertical (suspension
-    // squat/bounce) velocity, which spikes under acceleration/cornering;
-    // feeding that noise into a kp=1, kd=0 P-controller with no smoothing
-    // made pid_throttle (and the longitudinal_force it drives) swing
-    // wildly tick to tick even in a straight, steady-throttle run.
-    double current_speed = velocity.x * forward_vec.x +
-                           velocity.y * forward_vec.y +
-                           velocity.z * forward_vec.z;
     double target_speed = ack_speed_;
     if (control_mode_.max_velocity_ms > 0.0) {
       target_speed = std::clamp(target_speed, -control_mode_.max_velocity_ms,
                                 control_mode_.max_velocity_ms);
     }
-    double speed_error = target_speed - current_speed;
 
-    double pid_throttle =
-        speed_pid_.update(speed_error, control_mode_.speed_pid, now);
+    // CARLA's own Ackermann controller (Vehicle::ApplyAckermannControl) runs
+    // the speed/acceleration PID loops server-side — gains are set once via
+    // ApplyAckermannControllerSettings in set_control_config(). This
+    // replaces the client-side speed_pid_/steer_pid_ used previously. Steer
+    // and steer_speed are forwarded as-is: ROS ackermann_msgs and CARLA
+    // share the same steering convention (positive = left), confirmed by
+    // CARLA's own ROS2 AckermannControlSubscriber, which passes
+    // steering_angle straight through with no sign flip or scaling.
+    carla::rpc::VehicleAckermannControl ack_ctrl;
+    ack_ctrl.steer = static_cast<float>(ack_steering_angle_);
+    ack_ctrl.steer_speed = static_cast<float>(ack_steering_angle_vel_);
+    ack_ctrl.speed = static_cast<float>(target_speed);
+    ack_ctrl.acceleration = static_cast<float>(ack_acceleration_);
+    ack_ctrl.jerk = static_cast<float>(ack_jerk_);
+    ack_ctrl.steering_mode = static_cast<uint8_t>(steering_mode_);
 
-    ctrl.brake = (pid_throttle < -0.1) ? std::min(1.0, -pid_throttle) : 0.0;
-    ctrl.throttle = (pid_throttle > 0.0) ? std::min(1.0, pid_throttle) : 0.0;
-    ctrl.reverse = (target_speed < 0);
+    t_rpc = PerfMonitor::tick();
+    v->ApplyAckermannControl(ack_ctrl);
+    perf.record("rpc.ApplyAckermannControl", t_rpc);
 
-    // Real front-wheel angle (sampled on the telemetry thread, see
-    // publish_vehicle_feedback) as feedback, Ackermann sign (left-positive) —
-    // matches ack_steering_angle_'s convention so the error below is a
-    // direct radian delta, not a self-referencing loop off our own last
-    // command (that went unstable at high kp — see steer_pid_ tuning notes
-    // in config, control.steer_pid).
-    double measured_steer_rad =
-        measured_steer_deg_.load(std::memory_order_relaxed) * M_PI / 180.0;
-    double steer_error = ack_steering_angle_ - measured_steer_rad;
-    double pid_steer =
-        steer_pid_.update(steer_error, control_mode_.steer_pid, now);
+    last_steering_deg_ = ack_steering_angle_ * 180.0 / M_PI;
 
-    double target_steer_deg =
-        -(ack_steering_angle_ + pid_steer) * 180.0 /
-        M_PI;  // Ackerman positive is left, CARLA positive is right
-    ctrl.steer = static_cast<float>(std::clamp(
-        target_steer_deg / std::max(max_steer_deg_, 1.0), -1.0, 1.0));
-  } else {
+    // CARLA computes throttle/brake internally and never exposes them back
+    // while the ackermann controller is active (see publish_vehicle_feedback
+    // / publish_tire_forces for the same caveat), so the brake light is
+    // approximated from commanded-vs-measured speed instead of a real brake
+    // value.
+    double measured = measured_speed_ms_.load(std::memory_order_relaxed);
+    bool braking = std::abs(target_speed) + 0.2 < std::abs(measured);
+    set_light_bit(
+        *v,
+        static_cast<uint32_t>(carla::rpc::VehicleLightState::LightState::Brake),
+        braking);
+    return;
+  }
+
+  t_rpc = PerfMonitor::tick();
+  carla::rpc::VehicleControl ctrl = v->GetControl();
+  perf.record("rpc.GetControl", t_rpc);
+
+  {
     rclcpp::Time now = node_->now();
 
     auto velocity = v->GetVelocity();
@@ -1347,12 +1470,22 @@ void CarlaROS2Backend::apply_vehicle_control() {
 
       double pid_output = rpm_pid_.update(error, control_mode_.rpm_pid, now);
 
-      ctrl.throttle = (pid_output > 0.0)
-                          ? static_cast<float>(std::min(1.0, pid_output))
-                          : 0.0f;
-      ctrl.brake = (pid_output < -0.01)
-                       ? static_cast<float>(std::min(1.0, -pid_output))
-                       : 0.0f;
+      if (control_mode_.hold_brake_at_standstill && target_mag < 1e-3 &&
+          std::abs(forward_speed) < control_mode_.standstill_speed_ms) {
+        // Same zero-setpoint hold as the ackermann branch above: error ~0
+        // would otherwise command neutral (throttle 0, brake 0) and leave the
+        // wheels free to keep spinning.
+        ctrl.throttle = 0.0f;
+        ctrl.brake = 1.0f;
+        rpm_pid_.integral = 0.0;
+      } else {
+        ctrl.throttle = (pid_output > 0.0)
+                            ? static_cast<float>(std::min(1.0, pid_output))
+                            : 0.0f;
+        ctrl.brake = (pid_output < -0.01)
+                         ? static_cast<float>(std::min(1.0, -pid_output))
+                         : 0.0f;
+      }
     }
     ctrl.steer = static_cast<float>(std::clamp(
         -cmd_steering_deg_ / std::max(max_steer_deg_, 1.0), -1.0, 1.0));
@@ -1361,9 +1494,7 @@ void CarlaROS2Backend::apply_vehicle_control() {
   t_rpc = PerfMonitor::tick();
   v->ApplyControl(ctrl);
   perf.record("rpc.ApplyControl", t_rpc);
-  last_steering_deg_ = (control_mode_.source == "ackermann_drive")
-                           ? -ctrl.steer * max_steer_deg_
-                           : cmd_steering_deg_;
+  last_steering_deg_ = cmd_steering_deg_;
   // Brake light from cache — only round-trips when the bit actually changes.
   set_light_bit(
       *v,

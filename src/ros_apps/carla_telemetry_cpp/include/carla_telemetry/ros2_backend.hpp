@@ -88,15 +88,46 @@ class CarlaROS2Backend {
   };
 
   /**
+   * @brief CARLA-native Ackermann controller PID gains (speed + acceleration
+   * loops), applied once via Vehicle::ApplyAckermannControllerSettings.
+   */
+  struct AckermannControllerConfig {
+    double speed_kp = 0.0;
+    double speed_ki = 0.0;
+    double speed_kd = 0.0;
+    double accel_kp = 0.0;
+    double accel_ki = 0.0;
+    double accel_kd = 0.0;
+    AckermannControllerConfig() = default;
+  };
+
+  /**
    * @brief Control mode configuration.
    */
   struct ControlModeConfig {
     std::string source = "existing_control_topic";
-    PIDConfig speed_pid;
-    PIDConfig steer_pid;
     PIDConfig steer_vel_pid;
     PIDConfig rpm_pid;
+    AckermannControllerConfig ackermann_controller;
     double max_velocity_ms = 0.0;  // speed cap (m/s); <=0 disables the limiter
+
+    /**
+     * @brief Hold the brake when the commanded speed is zero and the vehicle
+     * is already stopped, instead of coasting in neutral.
+     *
+     * @details A P-only speed controller cannot hold a standstill: with a zero
+     * setpoint and a stationary vehicle the error is ~0, so it commands
+     * throttle 0 @b and brake 0 — free-wheeling. Any wheel rotation (the
+     * spawn drop, a slope, one stale throttle tick) then persists, because
+     * @c damping_rate_zero_throttle_clutch_engaged /
+     * @c ..._disengaged provide the only decay and may be configured to 0.
+     * Set false to restore the old coast-in-neutral behaviour.
+     */
+    bool hold_brake_at_standstill = true;
+
+    /// Speed (m/s) below which the vehicle counts as stopped for the hold.
+    double standstill_speed_ms = 0.1;
+
     ControlModeConfig() = default;
   };
 
@@ -148,6 +179,14 @@ class CarlaROS2Backend {
         auto ctrl = v->GetControl();
         // steering_mode_ defaults to 2 (DoubleAckerman)
         ctrl.steering_mode = steering_mode_;
+        // Held stopped from the very first frame. A freshly spawned CARLA
+        // vehicle has throttle 0 AND brake 0, so it free-wheels: the drop onto
+        // its suspension can spin the wheels up, and with
+        // damping_rate_zero_throttle_* at 0 nothing decays that rotation.
+        // apply_vehicle_control()'s standstill hold takes over on the first
+        // control tick; this closes the gap before it.
+        ctrl.throttle = 0.0f;
+        ctrl.brake = 1.0f;
         v->ApplyControl(ctrl);
       }
     }
@@ -398,8 +437,6 @@ class CarlaROS2Backend {
       return output;
     }
   };
-  PIDState speed_pid_;
-  PIDState steer_pid_;
   PIDState steer_vel_pid_;
   PIDState rpm_pid_;
 
@@ -408,19 +445,26 @@ class CarlaROS2Backend {
   double cmd_steering_deg_ = 0.0;
   bool cmd_brake_ = false;
 
-  // Ackermann commanded state
+  // Ackermann commanded state — forwarded as-is to CARLA's native
+  // Vehicle::ApplyAckermannControl, which runs the speed/acceleration PID
+  // loops server-side (see control.ackermann_controller in yaml).
   double ack_speed_ = 0.0;
   double ack_steering_angle_ = 0.0;
   double ack_steering_angle_vel_ = 0.0;
+  double ack_acceleration_ = 0.0;
+  double ack_jerk_ = 0.0;
 
   double last_steering_deg_ = 0.0;
   bool sim_running_ = true;
 
-  // Real front-wheel steer angle (deg, CARLA sign), sampled on the telemetry
-  // thread via GetWheelSteerAngle. The control loop only reads this atomic —
-  // it never issues the RPC itself, so ackermann_drive's steer PID gets true
-  // physical feedback without adding a blocking call to the control tick.
-  std::atomic<float> measured_steer_deg_{0.0f};
+  // Forward-projected signed speed (m/s), sampled on the telemetry thread
+  // (10 Hz, already computed there for speed_pub_ — no extra RPC). The
+  // control loop (20 Hz) reads this lock-free to approximate the brake-light
+  // state while ackermann_drive is active, since CARLA's native Ackermann
+  // controller decides throttle/brake server-side and doesn't expose it back
+  // (Vehicle::GetControl is only valid once the ackermann controller is
+  // inactive).
+  std::atomic<double> measured_speed_ms_{0.0};
 
   /**
    * @brief Locally cached CARLA simulation state to prevent per-tick blocking
@@ -430,8 +474,11 @@ class CarlaROS2Backend {
    * telemetry thread. To eliminate network overhead on execution hot paths,
    * simulation attributes are cached according to two optimization policies:
    *
-   * 1. @b Static @b physics: Vehicle physics properties remain immutable after
-   *    spawning and are fetched exactly once during initialization.
+   * 1. @b Lazily @b cached @b physics: Vehicle physics properties are fetched
+   *    once on first use and then served from the cache. They are only
+   *    re-fetched when this backend itself mutates them at runtime (see
+   *    apply_tire_friction / apply_drag_coefficient), which refreshes the
+   *    cache under @c physics_mutex_.
    *
    * 2. @b Light @b state @b mirroring: Vehicle light states are mirrored
    * locally so hot paths never call @c GetLightState directly. The remote
@@ -448,18 +495,57 @@ class CarlaROS2Backend {
    *   invoke @c SetLightState are explicitly protected by a mutex to prevent
    *   race conditions.
    */
-  std::once_flag physics_once_;
+  std::mutex physics_mutex_;
+  bool physics_cached_ = false;
   carla::rpc::VehiclePhysicsControl cached_physics_;
+
+  /**
+   * @brief Runtime friction coefficient commanded over the tire_friction
+   * topic, unified across CARLA's per-wheel @c tire_friction and the ground
+   * truth Magic Formula @c mu so both models always use the same number.
+   *
+   * @details Negative means "never commanded" — publish_tire_forces then falls
+   * back to the per-wheel @c mu from tire_model_config.yaml. Kept as an atomic
+   * (not under physics_mutex_) because the telemetry thread reads it on every
+   * tire-force publish, while writes only happen on the subscription thread.
+   */
+  std::atomic<double> tire_mu_override_{-1.0};
+
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
   std::mutex light_set_mutex_;
 
   /**
    * @brief Get the physics control.
+   *
+   * @details Returns a copy rather than a reference: the cache is mutable at
+   * runtime (friction / drag topics), so handing out a reference would let the
+   * telemetry thread read the struct while the subscription thread rewrites
+   * it.
+   *
    * @param v Vehicle.
    * @return Vehicle physics control.
    */
-  const carla::rpc::VehiclePhysicsControl& physics(carla::client::Vehicle& v);
+  carla::rpc::VehiclePhysicsControl physics(carla::client::Vehicle& v);
+
+  /**
+   * @brief Set the ground friction coefficient of all tires at runtime.
+   *
+   * @details Writes CARLA's per-wheel @c WheelPhysicsControl::tire_friction
+   * and the ground-truth Magic Formula @c mu to the same value, so the
+   * simulated physics and the forces published on the tire_forces topic never
+   * disagree. Non-driven wheels keep the low-friction value that
+   * CarlaVehicle::apply_physics uses to emulate FWD/RWD.
+   *
+   * @param friction Friction coefficient (>= 0).
+   */
+  void apply_tire_friction(float friction);
+
+  /**
+   * @brief Set the vehicle aerodynamic drag coefficient at runtime.
+   * @param drag Drag coefficient (>= 0).
+   */
+  void apply_drag_coefficient(float drag);
   /**
    * @brief Ensure light state is initialized.
    * @param v Vehicle.
@@ -549,6 +635,8 @@ class CarlaROS2Backend {
   rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr spawn_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sim_start_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sim_stop_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr tire_friction_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr drag_sub_;
 
   // ── Services ─────────────────────────────────────────────────────
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr sim_start_srv_;

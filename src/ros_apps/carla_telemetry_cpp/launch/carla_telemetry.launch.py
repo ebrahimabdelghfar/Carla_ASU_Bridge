@@ -62,7 +62,7 @@ def generate_launch_description():
     telemetry_node = LifecycleNode(
         package="carla_telemetry_cpp",
         executable="carla_telemetry_node",
-        name="micropilot_carla_bridge_node",
+        name="ASU_RT_Carla_Telemetry_Node",
         namespace="",
         output="screen",
         arguments=["--ros-args", "--log-level", LaunchConfiguration("log_level")],
@@ -77,7 +77,7 @@ def generate_launch_description():
 
     emit_configure = EmitEvent(
         event=ChangeState(
-            lifecycle_node_matcher=launch_ros.events.lifecycle.matches_node_name('micropilot_carla_bridge_node'),
+            lifecycle_node_matcher=launch_ros.events.lifecycle.matches_node_name('ASU_RT_Carla_Telemetry_Node'),
             transition_id=Transition.TRANSITION_CONFIGURE,
         ),
         condition=IfCondition(LaunchConfiguration("auto_start"))
@@ -91,7 +91,7 @@ def generate_launch_description():
             entities=[
                 EmitEvent(
                     event=ChangeState(
-                        lifecycle_node_matcher=launch_ros.events.lifecycle.matches_node_name('micropilot_carla_bridge_node'),
+                        lifecycle_node_matcher=launch_ros.events.lifecycle.matches_node_name('ASU_RT_Carla_Telemetry_Node'),
                         transition_id=Transition.TRANSITION_ACTIVATE,
                     )
                 )

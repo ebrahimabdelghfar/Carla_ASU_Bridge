@@ -320,13 +320,23 @@ void CarlaTelemetryNode::setup_vehicle() {
       pid.max_output = pid_node["max_output"].as<double>(0.0);
     }
   };
-  if (ctrl["speed_pid"]) load_pid(ctrl["speed_pid"], mode_cfg.speed_pid);
-  if (ctrl["steer_pid"]) load_pid(ctrl["steer_pid"], mode_cfg.steer_pid);
   if (ctrl["steer_vel_pid"])
     load_pid(ctrl["steer_vel_pid"], mode_cfg.steer_vel_pid);
   if (ctrl["rpm_pid"]) load_pid(ctrl["rpm_pid"], mode_cfg.rpm_pid);
 
+  if (auto ac = ctrl["ackermann_controller"]) {
+    mode_cfg.ackermann_controller.speed_kp = ac["speed_kp"].as<double>(0.0);
+    mode_cfg.ackermann_controller.speed_ki = ac["speed_ki"].as<double>(0.0);
+    mode_cfg.ackermann_controller.speed_kd = ac["speed_kd"].as<double>(0.0);
+    mode_cfg.ackermann_controller.accel_kp = ac["accel_kp"].as<double>(0.0);
+    mode_cfg.ackermann_controller.accel_ki = ac["accel_ki"].as<double>(0.0);
+    mode_cfg.ackermann_controller.accel_kd = ac["accel_kd"].as<double>(0.0);
+  }
+
   mode_cfg.max_velocity_ms = ctrl["max_velocity_kmh"].as<double>(0.0) / 3.6;
+  mode_cfg.hold_brake_at_standstill =
+      ctrl["hold_brake_at_standstill"].as<bool>(true);
+  mode_cfg.standstill_speed_ms = ctrl["standstill_speed_ms"].as<double>(0.1);
 
   backend_->set_control_config(ctrl["max_rpm"].as<double>(150),
                                ctrl["max_steer_deg"].as<double>(70), mode_cfg);

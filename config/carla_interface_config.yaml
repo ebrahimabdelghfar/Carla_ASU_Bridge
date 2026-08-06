@@ -134,17 +134,17 @@ vehicle:
   # ── Engine & Physics ─────────────────────────────────────────────────
   physics:
     # Set to false to skip apply_physics_control() and keep blueprint defaults.
-    enabled: false
+    enabled: true
 
-    mass: 400.0              # kg
-    drag_coefficient: 0.1     # aerodynamic Cd
+    mass: 240.0              # kg
+    drag_coefficient: 0.426     # aerodynamic Cd
 
     # Whether to override the blueprint's default center of mass
     override_center_of_mass: false
     # Centre of mass offset from actor origin (metres, CARLA frame)
     center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
 
-    max_rpm: 300.0           # peak engine RPM
+    max_rpm: 5000.0           # peak engine RPM
     moi: 0.01                  # engine moment of inertia (kg·m²)
 
     damping_rate_full_throttle:                   0.15
@@ -153,9 +153,9 @@ vehicle:
 
     # Engine torque curve: [[RPM, Nm], ...]
     torque_curve:
-      - [0.0,   200.0]
-      - [738.5, 200.0]
-      - [853.0, 200.0]
+      - [0.0,   1000.0]
+      - [738.5, 3000.0]
+      - [853.0, 1000.0]
 
     # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
     # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
@@ -175,28 +175,28 @@ vehicle:
         tire_friction: 3.5
         damping_rate: 0.25
         max_steer_angle: 16.0          # degrees
-        radius: 28.0                   # centimetres
+        radius: 25.0                   # centimetres
         max_brake_torque: 300.0       # N·m
         max_handbrake_torque: 500.0   # N·m
       - position: "FR"                 # front-right
         tire_friction: 3.5
         damping_rate: 0.25
         max_steer_angle: 16.0
-        radius: 28.0
+        radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RL"                 # rear-left
         tire_friction: 3.5
         damping_rate: 0.25
         max_steer_angle: 0.0
-        radius: 28.0
+        radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RR"                 # rear-right
         tire_friction: 3.5
         damping_rate: 0.25
         max_steer_angle: 0.0
-        radius: 28.0
+        radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
 
@@ -242,15 +242,15 @@ gps:
 battery:
   # Electrical model (mirrors Gazebo LinearBatteryPlugin)
   voltage: 48.0                           # V  - nominal open-circuit voltage
-  open_circuit_voltage_constant_coef: 12.6 # V  - voltage at 100 % charge
+  open_circuit_voltage_constant_coef: 14.0 # V  - voltage at 100 % charge
   open_circuit_voltage_linear_coef:  -2.8  # V  - additional voltage drop at 0 % charge
-  capacity: 50.0                           # Ah - total charge capacity
-  initial_charge: 50.0                     # Ah - charge at simulation start
-  resistance: 0.061                        # Ω  - internal resistance
+  capacity: 15.0                           # Ah - total charge capacity
+  initial_charge: 15.0                     # Ah - charge at simulation start
+  resistance: 0.0012                        # Ω  - internal resistance
   smooth_current_tau: 2.0                  # s  - low-pass filter τ for current
 
   # Power consumers
-  power_load: 10000.0                        # W  - constant baseline power draw
+  power_load: 2000.0                        # W  - constant baseline power draw
   # consumption_mode:
   #   "constant"       - only 'power_load' regardless of motion
   #   "velocity_based" - baseline + extra power proportional to speed
@@ -610,26 +610,19 @@ ground_truth_boxes:
 control:
   # Control source mode: "vehicle_interface" or "ackermann_drive"
   source: "ackermann_drive"
-  
-  # PID for linear velocity (m/s) tracking
-  speed_pid:
-    kp: 1.0
-    ki: 0.0
-    kd: 0.0
-    max_integral: 1.0
-    max_output: 1.0
 
-  # PID for steering angle (rad) tracking, closed on real front-wheel angle
-  # (GetWheelSteerAngle, sampled at telemetry.update_rate). kp=10 saturated
-  # max_output on nearly any error and had zero kd damping -> steering
-  # slammed full-lock and overshot every time, oscillating. Retune here if
-  # response still overshoots (raise kd) or feels sluggish (raise kp).
-  steer_pid:
-    kp: 0.1
-    ki: 0.0
-    kd: 0.0
-    max_integral: 1.0
-    max_output: 1.0
+  # ackermann_drive is driven by CARLA's own native Ackermann controller
+  # (Vehicle::ApplyAckermannControl / ApplyAckermannControllerSettings) —
+  # these gains tune its server-side speed and acceleration PID loops.
+  # steer/steer_speed are commanded open-loop (CARLA's own controller tracks
+  # them internally); there is no client-side steer PID to tune.
+  ackermann_controller:
+    speed_kp: 1.0
+    speed_ki: 0.0
+    speed_kd: 0.0
+    accel_kp: 1.0
+    accel_ki: 0.0
+    accel_kd: 0.0
 
   # PID for steering angle velocity (rad/s) tracking
   steer_vel_pid:
@@ -653,8 +646,25 @@ control:
 
   # Max steering angle (degrees) that maps to full steer (±1.0) in CARLA.
   #   carla_steer = -steering_angle_deg / max_steer_deg   (+ left → − right)
+  # Only used by vehicle_interface mode — ackermann_drive sends the commanded
+  # angle to CARLA's native controller directly in radians, unclamped here.
   max_steer_deg: 16.0
+  # Speed cap (km/h) — applies to both modes (ackermann_drive clamps the
+  # commanded speed before handing it to CARLA's native controller).
   max_velocity_kmh: 30.0
+
+  # ── Standstill hold (vehicle_interface only) ──────────────────────────────
+  # A P-only speed PID cannot hold a stop: with a zero setpoint and the vehicle
+  # already stationary the error is ~0, so it commands throttle 0 AND brake 0 —
+  # neutral, free-wheeling. Any wheel rotation (the spawn drop onto the
+  # suspension, a slope, one stale throttle tick) then persists indefinitely,
+  # because damping_rate_zero_throttle_clutch_engaged / _disengaged in
+  # vehicle.physics are the only decay and are currently 0.0.
+  # When true, a zero speed command below standstill_speed_ms applies full
+  # brake instead. Set false to restore coast-in-neutral.
+  # ackermann_drive relies on CARLA's own controller to hold a stop instead.
+  hold_brake_at_standstill: true
+  standstill_speed_ms: 0.01        # speed (m/s) below which the vehicle counts as stopped
 
 
 # ─── ROS 2 Configuration ──────────────────────────────────────────────────────
@@ -702,6 +712,24 @@ ros2:
     # Ackermann drive: /sim/control/ackermann_drive   ackermann_msgs/AckermannDriveStamped
     control_ackermann:           "/drive"
     # Spawn point is always /sim/spawn_point (absolute, hardcoded per ICD)
+
+    # ── Runtime environment tuning (subscriptions) ──────────────────────────
+    # Applied immediately via ApplyPhysicsControl — the vehicle is not
+    # respawned and no relaunch is needed. Values are not persisted: on
+    # restart the vehicle.physics block above takes effect again.
+    #
+    # Tire friction:  /sim/control/tire_friction      std_msgs/Float32   (>= 0)
+    #   Overrides vehicle.physics.wheels[*].tire_friction on every driven
+    #   wheel. Non-driven wheels keep tire_friction 0.1 so the FWD/RWD
+    #   emulation described in the vehicle.drive_mode comment survives.
+    #   The friction is unified: the same number also replaces the per-wheel
+    #   mu in config/tire_model_config.yaml, so the Magic Formula peak
+    #   (D = mu * tire_load) published on /sim/feedback/tire_forces tracks the
+    #   commanded grip instead of staying at the static yaml value.
+    control_tire_friction:       "control/tire_friction"
+    # Drag coefficient: /sim/control/drag_coefficient std_msgs/Float32   (>= 0)
+    #   Overrides vehicle.physics.drag_coefficient (aerodynamic Cd).
+    control_drag_coefficient:    "control/drag_coefficient"
 
   # ── Services ──────────────────────────────────────────────────────────────
   services:
