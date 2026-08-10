@@ -55,7 +55,7 @@ ENV PATH="/home/developer/.local/bin:${PATH}"
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=\${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}" >> /root/.bashrc \
     && echo "if [ -f /usr/share/bash-completion/bash_completion ]; then . /usr/share/bash-completion/bash_completion; fi" >> /root/.bashrc \
-    && echo "if [ -f /micropilot/micropilot_sim/install/ros_apps/setup.bash ]; then source /micropilot/micropilot_sim/install/ros_apps/setup.bash; fi" >> /root/.bashrc
+    && echo "if [ -f /micropilot/asurt/install/ros_apps/setup.bash ]; then source /micropilot/asurt/install/ros_apps/setup.bash; fi" >> /root/.bashrc
 EXPOSE 1-65535
 # CycloneDDS config so ROS 2 topics are discoverable from other LAN machines
 COPY docker/cyclonedds.xml /micropilot/cyclonedds.xml

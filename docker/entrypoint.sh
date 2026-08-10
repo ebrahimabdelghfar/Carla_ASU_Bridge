@@ -8,8 +8,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-build_micropilot_sim() {
-  local target_dir="micropilot_sim"
+build_asurt() {
+  local target_dir="asurt"
   if [ -d "/micropilot/$target_dir" ]; then
     echo -e "${GREEN}Building directory: /micropilot/$target_dir${NC}"
     cd "/micropilot/$target_dir"
@@ -23,7 +23,7 @@ build_micropilot_sim() {
 }
 
 if [ ! -f /micropilot/.initialized ]; then
-  build_micropilot_sim
+  build_asurt
   touch /micropilot/.initialized
 fi
 

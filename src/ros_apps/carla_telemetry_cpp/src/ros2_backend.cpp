@@ -338,7 +338,8 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
   control_mode_ = mode_cfg;
 
   if (control_mode_.source == "ackermann_drive" && vehicle_actor_) {
-    auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+    auto v =
+        boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
     if (v) {
       const auto& ac = control_mode_.ackermann_controller;
       carla::rpc::AckermannControllerSettings settings;
@@ -914,10 +915,10 @@ void CarlaROS2Backend::publish_tire_forces(
     double brake_dir = (speed_mps > kMinRollingSpeedMps)
                            ? -1.0
                            : (speed_mps < -kMinRollingSpeedMps ? 1.0 : 0.0);
-    double brake_force = ctrl_valid ? brake_dir * ctrl.brake *
-                                          phys.wheels[i].max_brake_torque /
-                                          radius_m
-                                    : 0.0;
+    double brake_force = ctrl_valid
+                             ? brake_dir * ctrl.brake *
+                                   phys.wheels[i].max_brake_torque / radius_m
+                             : 0.0;
 
     msg.slip_angle[i] = alpha;
     msg.slip_ratio[i] = w.long_slip;
@@ -1187,18 +1188,14 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     rawRR = v->GetWheelSteerAngle(carla::rpc::VehicleWheelLocation::BR_Wheel);
     perf.record("rpc.GetWheelSteerAngle", t_rpc);
   } else {
-    rawFL =
-        ctrl.steer *
-        (phys.wheels.size() > 0 ? phys.wheels[0].max_steer_angle : 0.0f);
-    rawFR =
-        ctrl.steer *
-        (phys.wheels.size() > 1 ? phys.wheels[1].max_steer_angle : 0.0f);
-    rawRL =
-        ctrl.steer *
-        (phys.wheels.size() > 2 ? phys.wheels[2].max_steer_angle : 0.0f);
-    rawRR =
-        ctrl.steer *
-        (phys.wheels.size() > 3 ? phys.wheels[3].max_steer_angle : 0.0f);
+    rawFL = ctrl.steer *
+            (phys.wheels.size() > 0 ? phys.wheels[0].max_steer_angle : 0.0f);
+    rawFR = ctrl.steer *
+            (phys.wheels.size() > 1 ? phys.wheels[1].max_steer_angle : 0.0f);
+    rawRL = ctrl.steer *
+            (phys.wheels.size() > 2 ? phys.wheels[2].max_steer_angle : 0.0f);
+    rawRR = ctrl.steer *
+            (phys.wheels.size() > 3 ? phys.wheels[3].max_steer_angle : 0.0f);
   }
   // ctrl.brake is likewise stale in ackermann_drive (CARLA's native
   // controller computes brake internally and never exposes it back) — report

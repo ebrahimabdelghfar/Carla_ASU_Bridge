@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-set(PROJECT_NAME "micropilot_sim")
+set(PROJECT_NAME "asurt")
 
 set(CMAKE_CXX_STANDARD 14)
 

@@ -96,7 +96,7 @@ All parameters are declared in `config/carla_micropilot_interface.yaml` and over
 
 ## Build
 
-From the `micropilot_sim` repo root:
+From the `asurt` repo root:
 
 ```bash
 source /opt/ros/humble/setup.bash

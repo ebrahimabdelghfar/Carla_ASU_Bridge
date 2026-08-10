@@ -41,7 +41,7 @@ fi
 
 # ── 2. CARLA Python API ────────────────────────────────────────────────────
 if [ "$SKIP_CARLA" = false ]; then
-    # Default path — sibling to the micropilot_sim workspace
+    # Default path — sibling to the asurt workspace
     CARLA_WHEEL_DIR="$HOME/carla/PythonAPI/carla/dist"
 
     if python3 -c "import carla" &>/dev/null; then

@@ -26,4 +26,4 @@ bag:
   compression_mode: "none"    # none | file | message  (none = no CPU cost, no drop risk)
   compression_format: "zstd"  # used only when compression_mode != none
   max_cache_size: 536870912   # bytes; 512 MB write buffer to absorb sensor bursts
-  output_dir: "scenarios_bags"  # under micropilot_sim/ (the parent dir of scenario_runner/)
+  output_dir: "scenarios_bags"  # under asurt/ (the parent dir of scenario_runner/)

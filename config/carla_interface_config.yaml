@@ -698,7 +698,7 @@ ros2:
     feedback_autonomous_mode:  "feedback/autonomous_mode"
     # Odometry:       /sim/odom                       nav_msgs/Odometry
     # NOTE: ICD defines this as /sim/odom (not under feedback/)
-    odom:                      "odom"
+    odom:                      "/odom"
     # Ground-truth boxes: /sim/ground_truth/boxes  visualization_msgs/MarkerArray
     ground_truth_boxes:        "ground_truth/boxes"
 
