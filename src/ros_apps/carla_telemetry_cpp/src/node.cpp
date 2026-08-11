@@ -351,15 +351,13 @@ void CarlaTelemetryNode::setup_vehicle() {
     mfw.B = w["B"].as<double>(10.0);
     mfw.C = w["C"].as<double>(1.9);
     mfw.E = w["E"].as<double>(0.97);
-    mfw.mu = w["mu"].as<double>(1.6);
     tire_model_cfg.wheels.push_back(mfw);
   }
   auto motor = tm["motor"];
-  tire_model_cfg.torque_constant_Nm =
-      motor["torque_constant_Nm"].as<double>(250.0);
-  tire_model_cfg.gear_ratio = motor["gear_ratio"].as<double>(8.0);
-  tire_model_cfg.drivetrain_efficiency =
-      motor["drivetrain_efficiency"].as<double>(0.95);
+  tire_model_cfg.Cm1 = motor["Cm1"].as<double>(8000.0);
+  tire_model_cfg.Cm2 = motor["Cm2"].as<double>(150.0);
+  tire_model_cfg.Cr0 = motor["Cr0"].as<double>(60.0);
+  tire_model_cfg.Cd = motor["Cd"].as<double>(1.2);
   backend_->set_tire_model_config(tire_model_cfg);
 }
 

@@ -876,21 +876,30 @@ void CarlaROS2Backend::publish_tire_forces(
     // wobble during a turn snapped lateral_force between its +D/-D extremes
     // instead of scaling smoothly.
     double alpha = rolling ? (w.lat_slip * M_PI / 180.0) : 0.0;
-    // Runtime friction commanded on the tire_friction topic overrides the yaml
-    // mu — one coefficient drives both CARLA's tire model and this one.
-    double mu_live = tire_mu_override_.load(std::memory_order_relaxed);
-    double mu = (mu_live >= 0.0) ? mu_live : mf.mu;
+    // mu comes straight from the simulator's own per-wheel physics
+    // (WheelPhysicsControl::tire_friction), not a yaml constant — whatever
+    // CARLA is actually using for grip (including runtime tire_friction
+    // commands and the FWD/RWD non-driven-wheel emulation) is exactly what
+    // feeds this Magic Formula, so the two models never disagree.
+    double mu = phys.wheels[i].tire_friction;
     double D = mu * w.tire_load;
     double Bx = mf.B * alpha;
     double lateral_force =
         D * std::sin(mf.C * std::atan(Bx - mf.E * (Bx - std::atan(Bx))));
 
-    // ── Longitudinal force: motor-torque-constant model, independent of
-    // CARLA's own engine torque_curve. Driven axle follows vehicle.drive_mode
-    // (FL/FR = 0/1, RL/RR = 2/3), same convention as
-    // CarlaVehicle::apply_physics. Sign follows ctrl.reverse — CARLA's
-    // throttle is always >= 0, direction comes from the reverse flag, not
-    // the throttle sign.
+    // ── Longitudinal force: Pacejka drivetrain model, independent of
+    // CARLA's own engine torque_curve.
+    //   Frx = (Cm1 - Cm2*vx)*T - Cr0 - Cd*vx^2
+    // (Liniger et al., "Optimization-Based Autonomous Racing of 1:43 Scale
+    // RC Cars"). Cm1/Cm2 (drive force, back-EMF falloff) apply per driven
+    // wheel, gated by vehicle.drive_mode (FL/FR = 0/1, RL/RR = 2/3), same
+    // convention as CarlaVehicle::apply_physics. Cr0/Cd (rolling resistance,
+    // aero drag) act on the whole car and are split evenly across all 4
+    // wheels, opposing motion — unlike drive force, they apply regardless of
+    // drive_mode/ctrl_valid since they depend only on measured speed, not on
+    // a (possibly stale) control command. Sign of the drive term follows
+    // ctrl.reverse — CARLA's throttle is always >= 0, direction comes from
+    // the reverse flag, not the throttle sign.
     bool driven = (i < 2) ? (tire_model_cfg_.drive_mode != "RWD")
                           : (tire_model_cfg_.drive_mode != "FWD");
     double radius_m = phys.wheels[i].radius / 100.0;
@@ -902,15 +911,14 @@ void CarlaROS2Backend::publish_tire_forces(
     // frozen, possibly-misleading motor/brake force.
     bool ctrl_valid = control_mode_.source != "ackermann_drive";
     double motor_dir = ctrl.reverse ? -1.0 : 1.0;
-    double motor_force = (driven && ctrl_valid)
-                             ? motor_dir *
-                                   (tire_model_cfg_.torque_constant_Nm *
-                                    ctrl.throttle * tire_model_cfg_.gear_ratio *
-                                    tire_model_cfg_.drivetrain_efficiency) /
-                                   radius_m
-                             : 0.0;
-    // Brake opposes current motion, not the throttle direction — negative
-    // when rolling forward, positive when rolling backward, ~0 at
+    double vx_abs = std::abs(speed_mps);
+    double motor_force =
+        (driven && ctrl_valid)
+            ? motor_dir * (tire_model_cfg_.Cm1 - tire_model_cfg_.Cm2 * vx_abs) *
+                  ctrl.throttle
+            : 0.0;
+    // Brake/resistance oppose current motion, not the throttle direction —
+    // negative when rolling forward, positive when rolling backward, ~0 at
     // standstill (no direction to oppose yet).
     double brake_dir = (speed_mps > kMinRollingSpeedMps)
                            ? -1.0
@@ -919,12 +927,15 @@ void CarlaROS2Backend::publish_tire_forces(
                              ? brake_dir * ctrl.brake *
                                    phys.wheels[i].max_brake_torque / radius_m
                              : 0.0;
+    double resistance_force =
+        brake_dir *
+        (tire_model_cfg_.Cr0 + tire_model_cfg_.Cd * vx_abs * vx_abs) / 4.0;
 
     msg.slip_angle[i] = alpha;
     msg.slip_ratio[i] = w.long_slip;
     msg.normal_load[i] = w.tire_load;
     msg.lateral_force[i] = lateral_force;
-    msg.longitudinal_force[i] = motor_force + brake_force;
+    msg.longitudinal_force[i] = motor_force + brake_force + resistance_force;
   }
 
   tire_forces_pub_->publish(msg);
@@ -1095,15 +1106,12 @@ void CarlaROS2Backend::apply_tire_friction(float friction) {
   cached_physics_ = pc;
   physics_cached_ = true;
 
-  // Unified friction: the ground-truth Magic Formula peak (D = mu * tire_load)
-  // uses the same coefficient as CARLA's own tire model, so /sim/feedback/
-  // tire_forces reflects the commanded grip instead of the static yaml mu.
-  tire_mu_override_.store(static_cast<double>(friction),
-                          std::memory_order_relaxed);
-
+  // publish_tire_forces() reads phys.wheels[i].tire_friction directly every
+  // tick, so this physics write alone is what the ground-truth Magic Formula
+  // sees too — no separate mu override to keep in sync.
   RCLCPP_INFO(node_->get_logger(),
               "[CarlaROS2Backend] tire_friction = %.3f (drive_mode=%s, "
-              "Magic Formula mu unified to the same value).",
+              "Magic Formula mu reads this back from the simulator).",
               friction, drive_mode.c_str());
 }
 

@@ -141,7 +141,8 @@ class CarlaROS2Backend {
       double B = 10.0;       ///< Magic Formula stiffness factor.
       double C = 1.9;        ///< Magic Formula shape factor.
       double E = 0.97;       ///< Magic Formula curvature factor.
-      double mu = 1.6;  ///< Friction coefficient (peak D = mu * tire_load).
+      // No mu field: friction (peak D = mu * tire_load) is read live from
+      // the simulator's own phys.wheels[i].tire_friction, not configured here.
     };
     std::vector<Wheel>
         wheels;  ///< Per-wheel Magic Formula params, FL/FR/RL/RR.
@@ -149,9 +150,13 @@ class CarlaROS2Backend {
     std::string drive_mode =
         "AWD";  ///< Mirrors vehicle.drive_mode ("AWD"/"FWD"/"RWD"); gates
                 ///< which wheels receive motor force.
-    double torque_constant_Nm = 250.0;    ///< Motor torque at throttle = 1.0.
-    double gear_ratio = 8.0;              ///< Motor-to-wheel gear ratio.
-    double drivetrain_efficiency = 0.95;  ///< Drivetrain mechanical efficiency.
+    /// Pacejka drivetrain model: Frx = (Cm1 - Cm2*vx)*T - Cr0 - Cd*vx^2.
+    double Cm1 =
+        8000.0;  ///< N, drive-force constant per driven wheel (T=1, vx=0).
+    double Cm2 = 150.0;  ///< N·s/m, per-driven-wheel back-EMF falloff.
+    double Cr0 = 60.0;   ///< N, total rolling resistance (whole car).
+    double Cd =
+        1.2;  ///< N·s²/m², total aerodynamic drag coefficient (whole car).
 
     TireModelConfig() = default;
   };
@@ -499,18 +504,6 @@ class CarlaROS2Backend {
   bool physics_cached_ = false;
   carla::rpc::VehiclePhysicsControl cached_physics_;
 
-  /**
-   * @brief Runtime friction coefficient commanded over the tire_friction
-   * topic, unified across CARLA's per-wheel @c tire_friction and the ground
-   * truth Magic Formula @c mu so both models always use the same number.
-   *
-   * @details Negative means "never commanded" — publish_tire_forces then falls
-   * back to the per-wheel @c mu from tire_model_config.yaml. Kept as an atomic
-   * (not under physics_mutex_) because the telemetry thread reads it on every
-   * tire-force publish, while writes only happen on the subscription thread.
-   */
-  std::atomic<double> tire_mu_override_{-1.0};
-
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
   std::mutex light_set_mutex_;
@@ -531,11 +524,12 @@ class CarlaROS2Backend {
   /**
    * @brief Set the ground friction coefficient of all tires at runtime.
    *
-   * @details Writes CARLA's per-wheel @c WheelPhysicsControl::tire_friction
-   * and the ground-truth Magic Formula @c mu to the same value, so the
-   * simulated physics and the forces published on the tire_forces topic never
-   * disagree. Non-driven wheels keep the low-friction value that
-   * CarlaVehicle::apply_physics uses to emulate FWD/RWD.
+   * @details Writes CARLA's per-wheel @c WheelPhysicsControl::tire_friction.
+   * publish_tire_forces() reads this same field live every tick for the
+   * ground-truth Magic Formula's @c mu, so the simulated physics and the
+   * forces published on the tire_forces topic never disagree. Non-driven
+   * wheels keep the low-friction value that CarlaVehicle::apply_physics uses
+   * to emulate FWD/RWD.
    *
    * @param friction Friction coefficient (>= 0).
    */

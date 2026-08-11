@@ -12,6 +12,10 @@ tire_model:
   # ── Lateral force: simplified Magic Formula (Pacejka) ──────────────────
   #   alpha = telemetry.wheels[i].lat_slip        (read live from CARLA)
   #   Fz    = telemetry.wheels[i].tire_load        (read live from CARLA, N)
+  #   mu    = phys.wheels[i].tire_friction  (read live from CARLA — NOT
+  #           configured here; set via vehicle.physics.wheels[*].tire_friction
+  #           in carla_interface_config.yaml, or overridden at runtime on
+  #           /sim/control/tire_friction)
   #   D     = mu * Fz
   #   Fy    = D * sin(C * atan(B*alpha - E*(B*alpha - atan(B*alpha))))
   magic_formula:
@@ -20,32 +24,32 @@ tire_model:
         B: 10.0    # stiffness factor
         C: 1.9     # shape factor
         E: 0.97    # curvature factor
-        mu: 1.6    # friction coefficient (peak D = mu * tire_load)
       - position: "FR"
         B: 10.0
         C: 1.9
         E: 0.97
-        mu: 1.6
       - position: "RL"
         B: 10.0
         C: 1.9
         E: 0.97
-        mu: 1.6
       - position: "RR"
         B: 10.0
         C: 1.9
         E: 0.97
-        mu: 1.6
 
-  # ── Longitudinal force: motor-torque-constant model ────────────────────
-  # Independent of CARLA's own engine torque_curve. Only wheels engaged by
-  # vehicle.drive_mode (carla_interface_config.yaml: AWD/FWD/RWD) receive
-  # motor force; braking uses each wheel's max_brake_torque (also from
-  # carla_interface_config.yaml).
-  #   F_long = drive_engaged * (torque_constant_Nm * throttle * gear_ratio
-  #                              * drivetrain_efficiency) / wheel_radius_m
-  #            - brake * wheel.max_brake_torque / wheel_radius_m
+  # ── Longitudinal force: Pacejka drivetrain model ────────────────────────
+  # Standard RC/race-car longitudinal model (Liniger et al., "Optimization-
+  # Based Autonomous Racing of 1:43 Scale RC Cars"). Independent of CARLA's
+  # own engine torque_curve. vx = forward speed (m/s), T = throttle (0..1).
+  #   Frx = (Cm1 - Cm2 * vx) * T - Cr0 - Cd * vx^2
+  # Cm1/Cm2 (drive force, back-EMF falloff) apply per driven wheel — only
+  # wheels engaged by vehicle.drive_mode (carla_interface_config.yaml:
+  # AWD/FWD/RWD) receive it. Cr0/Cd (rolling resistance, aero drag) act on
+  # the whole car and are split evenly across all 4 wheels, opposing motion.
+  # Braking still uses each wheel's max_brake_torque (carla_interface_config.yaml),
+  # added on top of this model.
   motor:
-    torque_constant_Nm: 250.0        # Nm at throttle = 1.0, per driven wheel
-    gear_ratio: 8.0
-    drivetrain_efficiency: 0.95
+    Cm1: 8000.0   # N, drive-force constant per driven wheel at throttle=1, vx=0
+    Cm2: 150.0    # N·s/m, per-driven-wheel back-EMF falloff (drive force → 0 near vx ≈ Cm1/Cm2)
+    Cr0: 60.0     # N, total rolling resistance (whole car, split across 4 wheels)
+    Cd: 0.45       # N·s²/m², total aerodynamic drag coefficient (whole car, split across 4 wheels)
