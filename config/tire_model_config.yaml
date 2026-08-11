@@ -36,7 +36,6 @@ tire_model:
         B: 10.0
         C: 1.9
         E: 0.97
-
   # ── Longitudinal force: Pacejka drivetrain model ────────────────────────
   # Standard RC/race-car longitudinal model (Liniger et al., "Optimization-
   # Based Autonomous Racing of 1:43 Scale RC Cars"). Independent of CARLA's

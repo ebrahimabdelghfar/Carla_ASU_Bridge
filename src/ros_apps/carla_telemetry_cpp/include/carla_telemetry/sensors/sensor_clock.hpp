@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 
 namespace carla_telemetry {
@@ -74,7 +75,12 @@ class SimClock {
     if (extra > MAX_EXTRAP)
       extra = MAX_EXTRAP;  // don't run away if sensors stall
     double cand = epoch0_ + (latest_sim_ - sim0_) + extra;
-    if (cand < last_now_) cand = last_now_;  // never step backward
+    // Strictly increasing, never merely flat: every real frame arrival
+    // re-anchors latest_sim_/latest_wall_, so the next candidate dips below the
+    // previous return value. Clamping to last_now_ would emit identical stamps
+    // for several ticks until wall time caught up; bump by one ULP instead.
+    if (cand <= last_now_)
+      cand = std::nextafter(last_now_, std::numeric_limits<double>::infinity());
     last_now_ = cand;
     return cand;
   }
