@@ -8,7 +8,7 @@ carla:
   # Set to false to run in asynchronous mode (world ticks on its own clock).
   synchronous_mode: true
   # Applied in BOTH sync and async. In async this is the "async fixed step":
-  fixed_delta_seconds: 0.033    # 20 Hz world physics step
+  fixed_delta_seconds: 0.033    # 30 Hz world physics step
 
   # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
   # Requires pygame and a display.
@@ -311,7 +311,7 @@ odometry:
   # Odometry calculation mode:
   #   "standard" - Standard odometry calculation from CARLA API transform
   #   "gnss"     - Odometry derived from GNSS ENU offset relative to global_coordinates origin
-  mode: "gnss"
+  mode: "standard"
 
   # Only applies when mode = "gnss".
   # true  → position from the noisy GPS fix (Gauss-Markov bias + white noise),
@@ -439,8 +439,6 @@ cameras:
     frame_id: "fl_camera"
     topic_rgb:         "/fl_camera/raw_images"
     topic_camera_info: "/fl_camera/camera_info"
-
-  
 
 # ─── Third-Person Chase View ──────────────────────────────────────────────────
 # A single RGB camera attached behind/above the ego vehicle, framed like the
@@ -579,7 +577,7 @@ telemetry:
 # 3D boxes of every world actor (vehicles / cyclists / pedestrians / signs),
 # read straight from CARLA and expressed in the ego base_link frame.
 ground_truth_boxes:
-  enabled: true
+  enabled: false
 
   # ROS 2 frame_id for the message header (boxes are ego-relative).
   frame_id: "base_link"
@@ -617,12 +615,12 @@ control:
   # steer/steer_speed are commanded open-loop (CARLA's own controller tracks
   # them internally); there is no client-side steer PID to tune.
   ackermann_controller:
-    speed_kp: 1.0
+    speed_kp: 0.15
     speed_ki: 0.0
-    speed_kd: 0.0
-    accel_kp: 1.0
+    speed_kd: 0.25
+    accel_kp: 0.01
     accel_ki: 0.0
-    accel_kd: 0.0
+    accel_kd: 0.01
 
   # PID for steering angle velocity (rad/s) tracking
   steer_vel_pid:
@@ -665,7 +663,6 @@ control:
   # ackermann_drive relies on CARLA's own controller to hold a stop instead.
   hold_brake_at_standstill: true
   standstill_speed_ms: 0.01        # speed (m/s) below which the vehicle counts as stopped
-
 
 # ─── ROS 2 Configuration ──────────────────────────────────────────────────────
 ros2:
