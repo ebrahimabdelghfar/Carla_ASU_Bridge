@@ -35,12 +35,13 @@ world:
   town: "silverstone"
   # Spawn point configuration.
   # To spawn at specific coordinates:
-  # spawn_point_coords: { x: 0.0, y: 0.0, z: 0.5, roll: 0.0, pitch: 0.0, yaw: 0.0 }
+  # skidpad location point
+  # spawn_point_coords: { x: 528.8704833984375, y: 63.526912689208984, z: 0.938620126247406, roll: 0.0, pitch: 0.0, yaw: -40.743 }
   # Or use an index into world.get_map().get_spawn_points().
   # Use -1 for a random spawn point.
   spawn_point_index: 0
 
-# Dynamic Pedestrians
+# Dynamic Pedestrians (need dynamic nav mesh))
 pedestrians:
   enabled: false
   count: 50                    # Number of pedestrians to spawn
@@ -50,7 +51,7 @@ pedestrians:
     - "walker.pedestrian.0004"
   speed: 1.2                  # Maximum walking speed in m/s
 
-# Dynamic NPC Vehicles
+# Dynamic NPC Vehicles (needs XODR map)
 npc_vehicles:
   enabled: false
   count: 10                    # Number of NPC vehicles to spawn
