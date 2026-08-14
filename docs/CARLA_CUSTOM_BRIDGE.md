@@ -16,6 +16,12 @@ Everything else described below — vehicle spawning, physics, sensors, control
 make download_carla_assets
 ```
 
+## Build Workspace
+
+```bash
+make setup_ros2_workspace
+```
+
 ## Running
 
 Launch the simulator and the bridge together, then drive the lifecycle node
