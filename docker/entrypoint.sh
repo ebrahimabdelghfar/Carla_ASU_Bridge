@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-cd /micropilot
+cd /asurt
 # Terminal Color
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -10,21 +10,21 @@ NC='\033[0m'
 
 build_asurt() {
   local target_dir="asurt"
-  if [ -d "/micropilot/$target_dir" ]; then
-    echo -e "${GREEN}Building directory: /micropilot/$target_dir${NC}"
-    cd "/micropilot/$target_dir"
+  if [ -d "/asurt/$target_dir" ]; then
+    echo -e "${GREEN}Building directory: /asurt/$target_dir${NC}"
+    cd "/asurt/$target_dir"
     make setup_ros2_workspace
-    cd /micropilot
-    echo -e "${GREEN}Successfully built directory: /micropilot/$target_dir${NC}"
+    cd /asurt
+    echo -e "${GREEN}Successfully built directory: /asurt/$target_dir${NC}"
   else
-    echo -e "${RED}Error: Directory /micropilot/$target_dir does not exist.${NC}"
+    echo -e "${RED}Error: Directory /asurt/$target_dir does not exist.${NC}"
     return 1
   fi
 }
 
-if [ ! -f /micropilot/.initialized ]; then
+if [ ! -f /asurt/.initialized ]; then
   build_asurt
-  touch /micropilot/.initialized
+  touch /asurt/.initialized
 fi
 
 exec "$@"

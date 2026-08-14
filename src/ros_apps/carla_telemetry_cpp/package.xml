@@ -8,7 +8,7 @@
     Spawns an ego vehicle in CARLA, attaches configurable cameras and LiDARs,
     simulates GPS noise, battery state, and publishes all data over ROS 2.
   </description>
-  <maintainer email="dev@micropilot.ai">Micropilot</maintainer>
+  <maintainer email="ebrahimabdelghfar550@gmail.com">Ebrahim Abdelghfar</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

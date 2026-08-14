@@ -8,7 +8,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Micropilot Sim - Isaac Sim Build${NC}"
+echo -e "${GREEN} Isaac Sim Build${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 WORKSPACE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"

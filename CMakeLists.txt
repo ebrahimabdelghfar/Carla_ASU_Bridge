@@ -18,7 +18,7 @@ set(THIRD_PARTY_LIBS_INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/install/thirdparty)
 
 project("${PROJECT_NAME}"
     VERSION 0.1
-    DESCRIPTION "MicroPilot Simulation"
+    DESCRIPTION "AUSRT Simulation Simulation"
     LANGUAGES C CXX)
 
 

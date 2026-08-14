@@ -1,6 +1,4 @@
 # Combined stream status — published by HMI bridge node
-# Maps to micropilot::system_manager::core::StreamStatus
-
 builtin_interfaces/Time stamp
 
 # Overall state

@@ -17,7 +17,7 @@ using namespace std::chrono_literals;
 namespace carla_telemetry {
 
 CarlaTelemetryNode::CarlaTelemetryNode(const rclcpp::NodeOptions& options)
-    : rclcpp_lifecycle::LifecycleNode("micropilot_carla_bridge_node", options) {
+    : rclcpp_lifecycle::LifecycleNode("carla_bridge_node", options) {
   // Declare parameters here
   this->declare_parameter<std::string>("config_file", "");
   this->declare_parameter<std::string>("open_manual_control", "");
@@ -68,7 +68,7 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
   if (!health_pub_) {
     health_pub_ =
         this->create_publisher<sim_manager_msgs::msg::ComponentHealth>(
-            "/micropilot_system_manager_node/component_health", 1);
+            "/carla_system_manager_node/component_health", 1);
   }
 
   RCLCPP_INFO(this->get_logger(), "CarlaTelemetryNode configured.");

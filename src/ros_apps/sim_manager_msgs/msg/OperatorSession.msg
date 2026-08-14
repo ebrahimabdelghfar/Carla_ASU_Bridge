@@ -1,5 +1,4 @@
 # Operator session state — published by HMI bridge node
-# Maps to micropilot::system_manager::core::OperatorSession
 
 builtin_interfaces/Time stamp
 

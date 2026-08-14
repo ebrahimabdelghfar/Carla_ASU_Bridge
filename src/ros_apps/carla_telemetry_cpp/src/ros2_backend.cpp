@@ -124,7 +124,7 @@ CarlaROS2Backend::CarlaROS2Backend(
     resp->message = "OK";
   };
   sim_start_srv_ = node_->create_service<std_srvs::srv::Trigger>(
-      "/micropolis/sim/start",
+      "/sim/start",
       [this](const std_srvs::srv::Trigger::Request::SharedPtr,
              std_srvs::srv::Trigger::Response::SharedPtr resp) {
         sim_running_ = true;
@@ -134,7 +134,7 @@ CarlaROS2Backend::CarlaROS2Backend(
       },
       rmw_qos_profile_services_default, cb_group_);
   sim_stop_srv_ = node_->create_service<std_srvs::srv::Trigger>(
-      "/micropolis/sim/stop",
+      "/sim/stop",
       [this](const std_srvs::srv::Trigger::Request::SharedPtr,
              std_srvs::srv::Trigger::Response::SharedPtr resp) {
         sim_running_ = false;
@@ -144,14 +144,14 @@ CarlaROS2Backend::CarlaROS2Backend(
       },
       rmw_qos_profile_services_default, cb_group_);
   sim_start_sub_ = node_->create_subscription<std_msgs::msg::Empty>(
-      "/micropolis/sim/start", qos_rel,
+      "/sim/start", qos_rel,
       [this](const std_msgs::msg::Empty::SharedPtr /*msg*/) {
         sim_running_ = true;
         if (vehicle_) vehicle_->resume();
       },
       sub_opts);
   sim_stop_sub_ = node_->create_subscription<std_msgs::msg::Empty>(
-      "/micropolis/sim/stop", qos_rel,
+      "/sim/stop", qos_rel,
       [this](const std_msgs::msg::Empty::SharedPtr /*msg*/) {
         sim_running_ = false;
         if (vehicle_) vehicle_->pause();

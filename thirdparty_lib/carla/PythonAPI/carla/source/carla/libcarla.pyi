@@ -4119,7 +4119,6 @@ class Vehicle(Actor):
     # endregion
 
 class VehicleSteeringMode(int, _CarlaEnum):
-    """Multimode steering mode (micropilot-compatible values 0–7)."""
 
     Disable = 0
     FrontAckerman = 1

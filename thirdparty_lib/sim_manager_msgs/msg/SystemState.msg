@@ -1,5 +1,4 @@
 # Top-level FSM state with numeric ID and human-readable name
-# Maps to micropilot::system_manager::core::SystemState enum
 
 uint8 state
 string name

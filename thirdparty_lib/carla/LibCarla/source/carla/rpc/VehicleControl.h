@@ -17,7 +17,7 @@
 namespace carla {
 namespace rpc {
 
-  /// Matches micropilot Vehicle::Control::SteeringMode_t (0–7).
+  /// Matches Vehicle::Control::SteeringMode_t (0–7).
   enum class VehicleSteeringMode : uint8_t {
     Disable = 0,
     FrontAckerman = 1,

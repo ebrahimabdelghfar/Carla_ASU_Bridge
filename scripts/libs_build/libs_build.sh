@@ -8,7 +8,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Micropilot Sim - Third-Party Libs Build${NC}"
+echo -e "${GREEN}ASURT Sim - Third-Party Libs Build${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 

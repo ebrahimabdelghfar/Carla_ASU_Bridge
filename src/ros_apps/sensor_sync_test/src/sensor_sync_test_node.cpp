@@ -17,7 +17,7 @@ using std::placeholders::_7;
 class SensorSyncTestNode : public rclcpp::Node {
 public:
   SensorSyncTestNode() : Node("sensor_sync_test_node"), count_(0), sum_shift_(0.0), max_shift_(0.0), min_shift_(1e9) {
-    this->declare_parameter<std::string>("config_path", "/home/ebrahim/micropolis_simulator/asurt/config/carla_interface_config.yaml");
+    this->declare_parameter<std::string>("config_path", "/home/ebrahim/asurt/config/carla_interface_config.yaml");
     std::string config_path = this->get_parameter("config_path").as_string();
 
     RCLCPP_INFO(this->get_logger(), "Reading config from %s", config_path.c_str());

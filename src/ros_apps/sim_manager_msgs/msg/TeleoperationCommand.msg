@@ -1,6 +1,4 @@
 # Validated teleop command — published by HMI bridge node
-# Maps to micropilot::system_manager::core::TeleoperationCommand
-
 float64 velocity           # m/s
 float64 acceleration       # m/s²
 float64 steering_angle     # degrees

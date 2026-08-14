@@ -87,8 +87,6 @@ dynamic_props:
 # Ego Vehicle
 vehicle:
   # CARLA blueprint filter string (partial match allowed, e.g. "vehicle.*")
-  # m1: "vehicle.micropolis.upolice_m1"
-  # m2: "vehicle.micropolis.upolice_m2v2"
   blueprint: "vehicle.vehicle.asurt_fsai"
 
   # role_name is used as the ROS actor name (visible in /carla/<role_name>/...)
@@ -225,7 +223,7 @@ global_coordinates:
   longitude: 55.39144931848923
   altitude:  11.0         # metres above sea level
 
-# GPS Noise Model (identical to Micropolis.Telemetry)
+# GPS Noise Model
 # Applied additively on top of CARLA GNSS output (Gauss-Markov + white noise).
 gps:
   # Update rate for the GPS ROS 2 publisher (Hz)
@@ -255,7 +253,7 @@ gps:
 
 # Battery Simulation
 # Software model — no CARLA sensor needed. Driven by vehicle speed.
-# Parameters are identical to Micropolis.Telemetry LinearBatteryPlugin model.
+# Parameters are identical to LinearBatteryPlugin model.
 battery:
   # Electrical model (mirrors Gazebo LinearBatteryPlugin)
   voltage: 48.0                           # V  - nominal open-circuit voltage
@@ -509,14 +507,6 @@ third_person_view:
 #                    Non-rotating flash LiDAR simulation. Uses horizontal_fov /
 #                    vertical_fov for a cone-shaped FOV. Adds semantic labels.
 #                    Dropoff parameters are not applicable and will be ignored.
-#   "gpu"          → sensor.lidar.ray_cast_gpu   (custom Carla_Micropolis sensor)
-#                    GPU depth-rasterization instead of CPU PhysX ray traces —
-#                    real-time at high point counts. REQUIRES a CarlaUE4 built
-#                    with the GPU lidar sensor (`make CarlaUE4`); a packaged
-#                    build without it will fail to find the blueprint. Same
-#                    params + output (XYZI) as rotary; dropoff/atmosphere attrs
-#                    are accepted if the sensor implements them. Extra:
-#                    `use_compute: true` selects the GPU compute-shader path.
 lidars:
   - name: "top_lidar"
     enabled: false

@@ -23,13 +23,13 @@ make LibCarla.client.release
 Copy the newly built library to replace the existing dependency in your ROS 2 workspace's `thirdparty_lib` folder:
 ```bash
 cp /home/ebrahim/carla/PythonAPI/carla/dependencies/lib/libcarla_client.a \
-   /home/ebrahim/micropolis_simulator/asurt/thirdparty_lib/carla/PythonAPI/carla/dependencies/lib/libcarla_client.a
+   /home/ebrahim/asurt/thirdparty_lib/carla/PythonAPI/carla/dependencies/lib/libcarla_client.a
 ```
 *(Optional: If you also modified headers, be sure to copy the updated headers to `thirdparty_lib/carla/LibCarla/source/` as well).*
 
 ### Step 3: Rebuild the dependent ROS 2 packages
 Navigate to your `asurt` workspace and rebuild any packages that depend on the CARLA client library (e.g., `carla_telemetry_cpp`) so they link against the new `libcarla_client.a`:
 ```bash
-cd /home/ebrahim/micropolis_simulator/asurt
+cd /home/ebrahim/Carla_ASU_Bridge/
 colcon build --packages-select carla_telemetry_cpp
 ```

@@ -91,7 +91,7 @@ teardown_cyclone:
 	echo -e "$(GREEN)  $$(grep -o 'NetworkInterface name=\"[^\"]*\"' "$$xml")$(NC)"
 	@echo -e "$(GREEN)Done. CycloneDDS on plain UDP default, bound to wired NIC.$(NC)"
 download_carla_assets:
-	@bash scripts/download_assests/download_carla_micropolis.sh
+	@bash scripts/download_assests/download_carla_asurt.sh
 kill_stale_sim:
 	@pkill -9 -f '[c]arla_telemetry_node' >/dev/null 2>&1 || true
 	@# manual_control is a fork()ed child; when the bridge is SIGKILLed it is
@@ -114,7 +114,7 @@ launch_carla_sim_low: kill_stale_sim
 	}; \
 	trap 'cleanup; exit' INT TERM HUP; \
 	source install/ros_apps/setup.bash; \
-	$(CARLA_AS_USER) setsid bash Carla_Micropolis/CarlaUE4.sh -vulkan -renderoffscreen -quality-level=Low & \
+	$(CARLA_AS_USER) setsid bash ASU_RT_Carla/CarlaUE4.sh -vulkan -renderoffscreen -quality-level=Low & \
 	until nc -z localhost 2000; do sleep 1; done; \
 	setsid ros2 launch carla_telemetry_cpp carla_telemetry.launch.py auto_start:=$(AUTO_START) & \
 	L_PID=$$!; \
@@ -211,9 +211,9 @@ setup_docker:
 	fi && \
 	docker build -t upolis_carla_simulator:latest -f $(WORKSPACE)/docker/dockerfile $(WORKSPACE)
 	$(DOCKER_COMPOSE) -f $(WORKSPACE)/docker/docker-compose.yml up -d
-	@docker attach --no-stdin upolis_carla_simulator & \
+	@docker attach --no-stdin asurt_carla_simulator & \
 	ATTACH_PID=$$! ; \
-	docker exec upolis_carla_simulator /bin/bash -c 'until [ -f /micropilot/.initialized ]; do sleep 1; done' ; \
+	docker exec asurt_carla_simulator /bin/bash -c 'until [ -f /asurt/.initialized ]; do sleep 1; done' ; \
 	EXIT_CODE=$$? ; \
 	kill $$ATTACH_PID 2>/dev/null || true ; \
 	exit $$EXIT_CODE

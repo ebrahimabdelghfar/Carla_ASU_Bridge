@@ -30,7 +30,7 @@ RUN apt-get update -y && apt-get install -y \
 ADD thirdparty_lib/carla/carla-0.9.16-cp310-cp310-linux_x86_64.whl /tmp/
 RUN pip3 install /tmp/carla-0.9.16-cp310-cp310-linux_x86_64.whl \
     && rm /tmp/carla-0.9.16-cp310-cp310-linux_x86_64.whl
-WORKDIR /micropilot
+WORKDIR /asurt
 RUN pip3 install pygame
 RUN apt-get update && \
     apt-get install wget -y && \
@@ -55,13 +55,13 @@ ENV PATH="/home/developer/.local/bin:${PATH}"
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=\${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}" >> /root/.bashrc \
     && echo "if [ -f /usr/share/bash-completion/bash_completion ]; then . /usr/share/bash-completion/bash_completion; fi" >> /root/.bashrc \
-    && echo "if [ -f /micropilot/asurt/install/ros_apps/setup.bash ]; then source /micropilot/asurt/install/ros_apps/setup.bash; fi" >> /root/.bashrc
+    && echo "if [ -f /asurt/install/ros_apps/setup.bash ]; then source /asurt/install/ros_apps/setup.bash; fi" >> /root/.bashrc
 EXPOSE 1-65535
 # CycloneDDS config so ROS 2 topics are discoverable from other LAN machines
-COPY docker/cyclonedds.xml /micropilot/cyclonedds.xml
-RUN echo "export CYCLONEDDS_URI=file:///micropilot/cyclonedds.xml" >> /root/.bashrc
+COPY docker/cyclonedds.xml /asurt/cyclonedds.xml
+RUN echo "export CYCLONEDDS_URI=file:///asurt/cyclonedds.xml" >> /root/.bashrc
 
-COPY --chown=developer:developer docker/entrypoint.sh /micropilot/entrypoint.sh
-RUN chmod +x /micropilot/entrypoint.sh
+COPY --chown=developer:developer docker/entrypoint.sh /asurt/entrypoint.sh
+RUN chmod +x /asurt/entrypoint.sh
 
-ENTRYPOINT ["/micropilot/entrypoint.sh"]
+ENTRYPOINT ["/asurt/entrypoint.sh"]

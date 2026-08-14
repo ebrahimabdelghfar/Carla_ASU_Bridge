@@ -4,11 +4,11 @@
   <name>carla_telemetry</name>
   <version>0.1.0</version>
   <description>
-    CARLA ROS 2 telemetry interface — mirrors Micropolis.Telemetry for Isaac Sim.
+    CARLA ROS 2 telemetry interface.
     Spawns an ego vehicle in CARLA, attaches configurable cameras and LiDARs,
     simulates GPS noise, battery state, and publishes all data over ROS 2.
   </description>
-  <maintainer email="dev@micropilot.ai">Micropilot</maintainer>
+  <maintainer email="dev@asurt.eng.asu.edu">ASU RT</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>

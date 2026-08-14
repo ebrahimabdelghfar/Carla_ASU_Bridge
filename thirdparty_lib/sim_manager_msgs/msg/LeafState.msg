@@ -1,6 +1,4 @@
 # Leaf-level FSM state with numeric ID and human-readable name
-# Maps to micropilot::system_manager::core::LeafState enum
-
 uint16 state
 string name
 builtin_interfaces/Time stamp

@@ -1,6 +1,4 @@
 # Real-time mission telemetry published periodically
-# Maps to micropilot::system_manager::mission::DetailedMissionContext
-
 builtin_interfaces/Time stamp
 
 string  mission_id

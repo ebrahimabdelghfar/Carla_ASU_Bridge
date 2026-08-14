@@ -1,7 +1,5 @@
 # Unified FSM transition service
 # Send an event name to trigger the corresponding FSM transition
-#
-# event_name must match MicropilotSystem::build_transition_dispatch() (micropilot_system.cpp).
 # Full set: power_on, init_complete, prepare_autonomy, safety_passed, safety_warned, safety_resolved,
 #   engage_autonomy, prelaunch_done, arbitration_ok,
 #   obstacle_detected, obstacle_persistent, obstacle_cleared,

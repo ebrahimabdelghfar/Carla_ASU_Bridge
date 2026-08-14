@@ -16,9 +16,9 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="Micropilot",
-    maintainer_email="dev@micropilot.ai",
-    description="CARLA ROS 2 telemetry interface mirroring Micropolis.Telemetry",
+    maintainer="ASU RT",
+    maintainer_email="dev@asurt.eng.asu.edu",
+    description="CARLA ROS 2 telemetry",
     license="MIT",
     entry_points={
         "console_scripts": [

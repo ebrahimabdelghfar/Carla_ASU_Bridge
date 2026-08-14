@@ -1,6 +1,4 @@
 # Unified vehicle telemetry snapshot — published by HMI bridge node
-# Maps to micropilot::system_manager::core::VehicleTelemetry
-
 builtin_interfaces/Time stamp
 
 # Identity

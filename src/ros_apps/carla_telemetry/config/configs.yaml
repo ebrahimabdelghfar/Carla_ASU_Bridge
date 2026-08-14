@@ -154,7 +154,7 @@ global_coordinates:
   longitude: -0.1278      # degrees
   altitude:  11.0         # metres above sea level
 
-# ─── GPS Noise Model (identical to Micropolis.Telemetry) ─────────────────────
+# ─── GPS Noise Model (identical to LinearBatteryPlugin) ─────────────────────
 # Applied additively on top of CARLA GNSS output (Gauss-Markov + white noise).
 gps:
   # Update rate for the GPS ROS 2 publisher (Hz)
@@ -183,7 +183,7 @@ gps:
 
 # ─── Battery Simulation ───────────────────────────────────────────────────────
 # Software model — no CARLA sensor needed. Driven by vehicle speed.
-# Parameters are identical to Micropolis.Telemetry LinearBatteryPlugin model.
+# Parameters are identical to LinearBatteryPlugin model.
 battery:
   # Electrical model (mirrors Gazebo LinearBatteryPlugin)
   voltage: 400.0                           # V  - nominal open-circuit voltage

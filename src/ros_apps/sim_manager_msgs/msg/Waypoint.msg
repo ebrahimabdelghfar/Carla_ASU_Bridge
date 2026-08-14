@@ -1,6 +1,4 @@
 # A single mission waypoint with GPS + local-frame position
-# Maps to micropilot::system_manager::mission::Waypoint
-
 float64 latitude
 float64 longitude
 float64 altitude

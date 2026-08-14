@@ -3,8 +3,8 @@ services:
     build:
       context: ..
       dockerfile: docker/dockerfile
-    container_name: upolis_carla_simulator
-    image: upolis_carla_simulator:latest
+    container_name: asurt_carla_simulator
+    image: asurt_carla_simulator:latest
     pid: host
     network_mode: host
     ipc: host
@@ -15,20 +15,19 @@ services:
       - __NV_PRIME_RENDER_OFFLOAD=1
       - __GLX_VENDOR_LIBRARY_NAME=nvidia
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
-      - CYCLONEDDS_URI=file:///micropilot/cyclonedds.xml
+      - CYCLONEDDS_URI=file:///asurt/cyclonedds.xml
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - ../src/ros_apps/carla_micropilot_interface:/micropilot/asurt/src/ros_apps/carla_micropilot_interface
-      - ../src/ros_apps/carla_telemetry:/micropilot/asurt/src/ros_apps/carla_telemetry
-      - ../src/ros_apps/carla_telemetry_cpp:/micropilot/asurt/src/ros_apps/carla_telemetry_cpp
-      - ../src/ros_apps/ros-carla-msgs:/micropilot/asurt/src/ros_apps/ros-carla-msgs
-      - ../thirdparty_lib/sim_manager_msgs:/micropilot/asurt/src/ros_apps/sim_manager_msgs
-      - ../thirdparty_lib/carla:/micropilot/asurt/thirdparty_lib/carla
-      - ../Carla_Micropolis:/micropilot/asurt/Carla_Micropolis
-      - ../scripts:/micropilot/asurt/scripts
-      - ../config:/micropilot/asurt/config
-      - ../makefile:/micropilot/asurt/makefile
-    working_dir: /micropilot
+      - ../src/ros_apps/carla_telemetry:/asurt/src/ros_apps/carla_telemetry
+      - ../src/ros_apps/carla_telemetry_cpp:/asurt/src/ros_apps/carla_telemetry_cpp
+      - ../src/ros_apps/ros-carla-msgs:/asurt/src/ros_apps/ros-carla-msgs
+      - ../thirdparty_lib/sim_manager_msgs:/asurt/src/ros_apps/sim_manager_msgs
+      - ../thirdparty_lib/carla:/asurt/thirdparty_lib/carla
+      - ../ASU_RT_Carla:/asurt/ASU_RT_Carla
+      - ../scripts:/asurt/scripts
+      - ../config:/asurt/config
+      - ../makefile:/asurt/makefile
+    working_dir: /asurt
     runtime: nvidia
     command: tail -f /dev/null
     stdin_open: true

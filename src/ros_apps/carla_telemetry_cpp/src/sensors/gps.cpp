@@ -220,7 +220,7 @@ std::optional<GpsState> CarlaGPS::update(double vx, double vy, double vz,
   double lat_gt_deg = lat_gt_rad * RAD_TO_DEG;
   double lon_gt_deg = lon_gt_rad * RAD_TO_DEG;
 
-  // Noise model (identical to Micropolis)
+  // Noise model
   double sqrt_dt = std::sqrt(dt);
 
   // Random-walk bias step
