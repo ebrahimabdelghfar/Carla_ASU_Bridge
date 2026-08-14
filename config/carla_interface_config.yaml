@@ -148,14 +148,20 @@ vehicle:
     moi: 0.01                  # engine moment of inertia (kg*m^2)
 
     damping_rate_full_throttle:                   0.15
-    damping_rate_zero_throttle_clutch_engaged:    0.0
-    damping_rate_zero_throttle_clutch_disengaged: 0.0
+    # Nonzero so a lifted-throttle driveline actually decays; at 0.0 a coasting
+    # car never slows and the low-speed creep chatters.
+    damping_rate_zero_throttle_clutch_engaged:    0.5
+    damping_rate_zero_throttle_clutch_disengaged: 0.5
 
     # Engine torque curve: [[RPM, Nm], ...]
+    # Peak is 900 N*m through final_ratio 1.0 into a 0.25 m wheel. Measured
+    # ceiling: above ~1000 the drivetrain cannot resolve a creep torque and
+    # stalls out any setpoint under 0.8 m/s; below ~600 it can no longer hold
+    # the 30 km/h max_velocity_kmh cap without saturating the throttle.
     torque_curve:
-      - [0.0,   1000.0]
-      - [738.5, 3000.0]
-      - [853.0, 1000.0]
+      - [0.0,   300.0]
+      - [738.5, 900.0]
+      - [853.0, 300.0]
 
     # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
     # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
@@ -170,31 +176,34 @@ vehicle:
     # Per-wheel physics overrides.
     # Wheel index convention: 0=FL, 1=FR, 2=RL, 3=RR.
     # Set 'drive_mode' above to auto-apply FWD/RWD friction differentiation.
+    # damping_rate is 1.0 rather than the usual 0.25: together with the reduced
+    # torque_curve it is what lets the vehicle hold a sub-1 m/s setpoint instead
+    # of stick-slipping to a standstill.
     wheels:
       - position: "FL"                 # front-left
         tire_friction: 3.5
-        damping_rate: 0.25
+        damping_rate: 1.0
         max_steer_angle: 16.0          # degrees
         radius: 25.0                   # centimetres
         max_brake_torque: 300.0       # N*m
         max_handbrake_torque: 500.0   # N*m
       - position: "FR"                 # front-right
         tire_friction: 3.5
-        damping_rate: 0.25
+        damping_rate: 1.0
         max_steer_angle: 16.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RL"                 # rear-left
         tire_friction: 3.5
-        damping_rate: 0.25
+        damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RR"                 # rear-right
         tire_friction: 3.5
-        damping_rate: 0.25
+        damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0
         max_brake_torque: 300.0
