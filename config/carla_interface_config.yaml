@@ -179,36 +179,38 @@ vehicle:
     # damping_rate is 1.0 rather than the usual 0.25: together with the reduced
     # torque_curve it is what lets the vehicle hold a sub-1 m/s setpoint instead
     # of stick-slipping to a standstill.
-    # tire_friction is 2.5, not the CARLA-typical 3.5: above ~3.0 the scrub of a
-    # steered wheel at creep speed drags the vehicle to a standstill, and even
-    # straight-line holds at 0.3 m/s become erratic. 2.5 still allows 2.5 g of
-    # lateral force, ~1.9x the worst case inside the max_velocity_kmh cap
-    # (full 16 deg lock at 8.3 m/s is ~1.35 g), so nothing in the operating
-    # envelope is grip-limited by it.
+    # tire_friction is 1.5, not the CARLA-typical 3.5: the scrub of a steered
+    # wheel at creep speed otherwise drags the vehicle to a standstill. Measured
+    # at a 0.5 m/s hold on full lock, 4-8 runs each: 3.5 and 2.5 and 2.0 are all
+    # bimodal (roughly half the runs collapse to a stall), 1.5 held 8/8 runs
+    # within 0.9%. Keep all four wheels equal — a front/rear split scrubs less
+    # but stayed bimodal. 1.5 g of lateral force is still ~1.6x the worst case
+    # inside the max_velocity_kmh cap (full 16 deg lock at 8.3 m/s needs 0.95 g
+    # on the measured 7.43 m full-lock radius).
     wheels:
       - position: "FL"                 # front-left
-        tire_friction: 2.5
+        tire_friction: 1.5
         damping_rate: 1.0
         max_steer_angle: 16.0          # degrees
         radius: 25.0                   # centimetres
         max_brake_torque: 300.0       # N*m
         max_handbrake_torque: 500.0   # N*m
       - position: "FR"                 # front-right
-        tire_friction: 2.5
+        tire_friction: 1.5
         damping_rate: 1.0
         max_steer_angle: 16.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RL"                 # rear-left
-        tire_friction: 2.5
+        tire_friction: 1.5
         damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RR"                 # rear-right
-        tire_friction: 2.5
+        tire_friction: 1.5
         damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0
