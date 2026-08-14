@@ -46,4 +46,6 @@ ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node activate
 
 # Video
 
-<video controls src="images/simulator.mp4" title="simulator"></video>
+
+https://github.com/user-attachments/assets/8a7885ac-42ba-4e7f-9a16-554fe6fa74c3
+
