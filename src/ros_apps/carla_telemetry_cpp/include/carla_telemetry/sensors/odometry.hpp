@@ -2,6 +2,7 @@
 
 #include <carla/client/Actor.h>
 
+#include <cstdint>
 #include <optional>
 #include <random>
 #include <string>
@@ -48,6 +49,47 @@ class CarlaOdometry {
                           CarlaGPS* gps = nullptr);
 
   /**
+   * @brief Bind the GPS sensor whose stream feeds position in "gnss" mode.
+   *
+   * Only used by position_source(); get_state() still takes the pointer as an
+   * argument.
+   *
+   * @param gps The GPS sensor (may be nullptr)
+   */
+  void bind_gps(CarlaGPS* gps) { gps_ = gps; }
+
+  /**
+   * @brief Identity of the measurement the position currently comes from.
+   *
+   * In "standard" mode position is read from the vehicle transform, which
+   * advances with the world frame — the caller's own frame number already
+   * identifies it, so this returns false and the caller keeps its default.
+   * In "gnss" mode position comes from the GNSS stream, which advances on its
+   * own schedule, so the world frame is the wrong identity: this reports the
+   * frame and sim timestamp of the fix behind the ENU cache instead.
+   *
+   * @param frame Set to the source measurement's world frame (gnss mode only)
+   * @param sim_time Set to the source measurement's sim timestamp (seconds)
+   * @return true if the position source is tracked separately (gnss mode)
+   * @return false if the caller's world frame is the correct identity
+   */
+  bool position_source(uint64_t& frame, double& sim_time) const;
+
+  /**
+   * @brief Dead-reckon the last state built by get_state() forward by dt.
+   *
+   * Constant-velocity translation plus an axis-angle rotation increment, both
+   * from the world-frame velocities that state was built with. No fresh noise
+   * is drawn — the prediction inherits whatever noise the source state carries,
+   * so a noise-enabled config does not random-walk between real samples.
+   *
+   * @param dt Seconds to integrate forward (sim seconds)
+   * @return std::optional<OdometryState> The predicted state, or nullopt if no
+   *         state has been produced yet
+   */
+  std::optional<OdometryState> predict(double dt) const;
+
+  /**
    * @brief Get whether the odometry is broadcasting TF.
    *
    * @return true if the odometry is broadcasting TF
@@ -68,6 +110,16 @@ class CarlaOdometry {
   OdometryNoiseConfig noise_cfg_;
   std::mt19937 rng_;
   std::normal_distribution<double> normal_{0.0, 1.0};
+  CarlaGPS* gps_ = nullptr;  // position source in "gnss" mode; not owned
+
+  // Last state produced by get_state(), plus the world-frame velocities it was
+  // built from (noise included, so predict() reproduces the same twist rather
+  // than a fresh draw). predict() integrates these; both are written and read
+  // from the odometry loop thread only.
+  OdometryState last_state_;
+  bool have_last_ = false;
+  double vx_world_ = 0.0, vy_world_ = 0.0, vz_world_ = 0.0;  // m/s
+  double wx_world_ = 0.0, wy_world_ = 0.0, wz_world_ = 0.0;  // rad/s
 };
 
 /**

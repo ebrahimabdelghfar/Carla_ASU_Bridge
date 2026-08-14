@@ -304,6 +304,27 @@ odometry:
   update_rate: 50.0
   qos_reliability: "BEST_EFFORT"
 
+  # Publish exactly one message per source sample, at that sample's own stamp.
+  #
+  # CARLA serves actor state from a client-side cache, so polling faster than
+  # the server ticks re-reads the same pose. The odom loop therefore publishes
+  # a real sample when the source measurement changes (the world frame in
+  # mode "standard", the GNSS fix in mode "gnss") and dead-reckons between
+  # samples so the topic keeps its configured rate with genuinely new content.
+  #
+  # false → dead-reckoned messages fill the gaps (constant velocity, bounded to
+  #          0.9 of a sim frame so a prediction never overruns the next sample).
+  #          Real samples still carry their frame-exact stamp.
+  # true  → no dead reckoning at all: the topic carries one message per source
+  #          sample. Effective rate equals the server rate (or the GNSS rate in
+  #          mode "gnss"), regardless of update_rate.
+  #
+  # update_rate keeps two jobs when this is true: it sets how fast the loop
+  # polls for a new sample (keep it >= the server rate), and it still decimates
+  # on the source frame number, so a value below the server rate yields the
+  # same frame subset the LiDAR/camera/boxes keep.
+  follow_server_rate: false
+
   # When true, also broadcast the odom→base_link TF transform via TF2.
   # Requires tf2_ros to be installed.  Set to false if your stack provides TF externally.
   broadcast_tf: true
@@ -615,7 +636,7 @@ control:
   # steer/steer_speed are commanded open-loop (CARLA's own controller tracks
   # them internally); there is no client-side steer PID to tune.
   ackermann_controller:
-    speed_kp: 0.15
+    speed_kp: 0.55
     speed_ki: 0.0
     speed_kd: 0.25
     accel_kp: 0.01
@@ -719,10 +740,9 @@ ros2:
     #   Overrides vehicle.physics.wheels[*].tire_friction on every driven
     #   wheel. Non-driven wheels keep tire_friction 0.1 so the FWD/RWD
     #   emulation described in the vehicle.drive_mode comment survives.
-    #   The friction is unified: the same number also replaces the per-wheel
-    #   mu in config/tire_model_config.yaml, so the Magic Formula peak
-    #   (D = mu * tire_load) published on /sim/feedback/tire_forces tracks the
-    #   commanded grip instead of staying at the static yaml value.
+    #   This is the only place grip is set: /sim/feedback/tire_forces reports
+    #   CARLA's own per-wheel forces, so they follow the commanded friction
+    #   with no second tire model to keep in sync.
     control_tire_friction:       "control/tire_friction"
     # Drag coefficient: /sim/control/drag_coefficient std_msgs/Float32   (>= 0)
     #   Overrides vehicle.physics.drag_coefficient (aerodynamic Cd).

@@ -89,12 +89,6 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
    */
   void load_config(const std::string& path);
   /**
-   * @brief Load the ground-truth tire model configuration.
-   *
-   * @param path The path to the tire model configuration
-   */
-  void load_tire_model_config(const std::string& path);
-  /**
    * @brief Setup the vehicle.
    */
   void setup_vehicle();
@@ -171,7 +165,6 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
 
   // YAML config (parsed once)
   YAML::Node config_;
-  YAML::Node tire_model_config_;
 
   // Core components
   std::unique_ptr<CarlaVehicle> vehicle_;
@@ -181,6 +174,9 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
   std::unique_ptr<CarlaBattery> battery_;
   std::unique_ptr<CarlaIMU> imu_;
   std::unique_ptr<CarlaOdometry> odometry_;
+  // odometry.follow_server_rate: when true the odom loop never dead-reckons —
+  // it emits exactly one message per source sample, at that sample's own stamp.
+  bool odom_follow_server_rate_ = false;
   std::unique_ptr<CarlaGroundTruthBoxes> ground_truth_boxes_;
   std::unique_ptr<CarlaWalkers> walkers_;
   std::unique_ptr<CarlaNpcVehicles> npc_vehicles_;

@@ -6,6 +6,32 @@
 
 namespace carla_telemetry {
 
+namespace {
+
+/// Rotate a world-frame vector into the body frame described by the unit
+/// quaternion (qx, qy, qz, qw): v' = q_inv * v * q, with q_inv = conjugate.
+void rotate_to_body(double qx, double qy, double qz, double qw, double in_x,
+                    double in_y, double in_z, double& out_x, double& out_y,
+                    double& out_z) {
+  double t0 = qw * in_x - qy * in_z + qz * in_y;
+  double t1 = qw * in_y - qz * in_x + qx * in_z;
+  double t2 = qw * in_z - qx * in_y + qy * in_x;
+  double t3 = qx * in_x + qy * in_y + qz * in_z;
+
+  out_x = t0 * qw + t3 * qx + t1 * qz - t2 * qy;
+  out_y = t1 * qw + t3 * qy + t2 * qx - t0 * qz;
+  out_z = t2 * qw + t3 * qz + t0 * qy - t1 * qx;
+}
+
+/// Inverse of rotate_to_body: body frame → world frame (v' = q * v * q_inv).
+void rotate_to_world(double qx, double qy, double qz, double qw, double in_x,
+                     double in_y, double in_z, double& out_x, double& out_y,
+                     double& out_z) {
+  rotate_to_body(-qx, -qy, -qz, qw, in_x, in_y, in_z, out_x, out_y, out_z);
+}
+
+}  // namespace
+
 CarlaOdometry::CarlaOdometry(const std::string& frame_id,
                              const std::string& child_frame_id,
                              double update_rate, bool broadcast_tf,
@@ -100,25 +126,11 @@ OdometryState CarlaOdometry::get_state(
 
   // Rotate world-frame vectors into body frame using inverse quaternion
   // q_inv for unit quaternion = conjugate = (-qx, -qy, -qz, qw)
-  auto rotate_to_body = [&](double wx_in, double wy_in, double wz_in,
-                            double& out_x, double& out_y, double& out_z) {
-    // v' = q_inv * v * q  (quaternion-vector rotation)
-    // Expanded using q_inv = (-qx, -qy, -qz, qw):
-    double t0 = qw * wx_in - qy * wz_in + qz * wy_in;
-    double t1 = qw * wy_in - qz * wx_in + qx * wz_in;
-    double t2 = qw * wz_in - qx * wy_in + qy * wx_in;
-    double t3 = qx * wx_in + qy * wy_in + qz * wz_in;
-
-    out_x = t0 * qw + t3 * qx + t1 * qz - t2 * qy;
-    out_y = t1 * qw + t3 * qy + t2 * qx - t0 * qz;
-    out_z = t2 * qw + t3 * qz + t0 * qy - t1 * qx;
-  };
-
   double vx, vy, vz;
-  rotate_to_body(vx_world, vy_world, vz_world, vx, vy, vz);
+  rotate_to_body(qx, qy, qz, qw, vx_world, vy_world, vz_world, vx, vy, vz);
 
   double wx, wy, wz;
-  rotate_to_body(wx_world, wy_world, wz_world, wx, wy, wz);
+  rotate_to_body(qx, qy, qz, qw, wx_world, wy_world, wz_world, wx, wy, wz);
 
   if (noise_cfg_.enabled) {
     vx += noise_cfg_.vel_stddev_x * normal_(rng_);
@@ -147,6 +159,73 @@ OdometryState CarlaOdometry::get_state(
   s.wy = wy;
   s.wz = wz;
   s.broadcast_tf = broadcast_tf_;
+
+  // Stash what predict() needs to carry this state forward: the state itself
+  // and its velocities back in the world frame. They are re-derived from the
+  // final body-frame values rather than reused from vx_world/wx_world above so
+  // that any noise applied to the twist is carried too — the prediction then
+  // reproduces the same twist instead of drawing a new sample.
+  rotate_to_world(qx, qy, qz, qw, vx, vy, vz, vx_world_, vy_world_, vz_world_);
+  rotate_to_world(qx, qy, qz, qw, wx, wy, wz, wx_world_, wy_world_, wz_world_);
+  last_state_ = s;
+  have_last_ = true;
+  return s;
+}
+
+bool CarlaOdometry::position_source(uint64_t& frame, double& sim_time) const {
+  if (mode_ != "gnss" || !gps_) return false;
+  return gps_->enu_source(frame, sim_time);
+}
+
+std::optional<OdometryState> CarlaOdometry::predict(double dt) const {
+  if (!have_last_) return std::nullopt;
+  if (!(dt > 0.0)) return last_state_;
+
+  OdometryState s = last_state_;
+
+  // Position: constant velocity on the full 3D world vector. Steering-mode
+  // agnostic — no bicycle/Ackermann assumption, so crab and parallel steering
+  // integrate as correctly as normal steering.
+  s.pos_x += vx_world_ * dt;
+  s.pos_y += vy_world_ * dt;
+  s.pos_z += vz_world_ * dt;
+
+  // Orientation: dq is the axis-angle exponential of omega*dt. omega is
+  // expressed in the world frame, so dq is applied on the LEFT
+  // (q_new = dq (x) q_last), then renormalized against drift.
+  double w_norm = std::sqrt(wx_world_ * wx_world_ + wy_world_ * wy_world_ +
+                            wz_world_ * wz_world_);
+  if (w_norm > 1e-12) {
+    double half = 0.5 * w_norm * dt;
+    double scale = std::sin(half) / w_norm;  // sin(theta/2) * (axis / |omega|)
+    double dqx = wx_world_ * scale;
+    double dqy = wy_world_ * scale;
+    double dqz = wz_world_ * scale;
+    double dqw = std::cos(half);
+
+    double lx = last_state_.qx, ly = last_state_.qy, lz = last_state_.qz,
+           lw = last_state_.qw;
+    s.qw = dqw * lw - dqx * lx - dqy * ly - dqz * lz;
+    s.qx = dqw * lx + dqx * lw + dqy * lz - dqz * ly;
+    s.qy = dqw * ly - dqx * lz + dqy * lw + dqz * lx;
+    s.qz = dqw * lz + dqx * ly - dqy * lx + dqz * lw;
+
+    double n = std::sqrt(s.qx * s.qx + s.qy * s.qy + s.qz * s.qz + s.qw * s.qw);
+    if (n > 1e-12) {
+      s.qx /= n;
+      s.qy /= n;
+      s.qz /= n;
+      s.qw /= n;
+    }
+  }
+
+  // Body twist: re-derive by rotating the world vectors through the PREDICTED
+  // orientation, not the old one, so twist.linear stays consistent with the
+  // pose it ships with.
+  rotate_to_body(s.qx, s.qy, s.qz, s.qw, vx_world_, vy_world_, vz_world_, s.vx,
+                 s.vy, s.vz);
+  rotate_to_body(s.qx, s.qy, s.qz, s.qw, wx_world_, wy_world_, wz_world_, s.wx,
+                 s.wy, s.wz);
   return s;
 }
 

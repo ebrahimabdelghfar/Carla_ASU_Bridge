@@ -132,36 +132,6 @@ class CarlaROS2Backend {
   };
 
   /**
-   * @brief Ground-truth tire force model configuration (Magic Formula +
-   * motor coefficient), parsed from config/tire_model_config.yaml.
-   */
-  struct TireModelConfig {
-    struct Wheel {
-      std::string position;  ///< "FL", "FR", "RL", "RR".
-      double B = 10.0;       ///< Magic Formula stiffness factor.
-      double C = 1.9;        ///< Magic Formula shape factor.
-      double E = 0.97;       ///< Magic Formula curvature factor.
-      // No mu field: friction (peak D = mu * tire_load) is read live from
-      // the simulator's own phys.wheels[i].tire_friction, not configured here.
-    };
-    std::vector<Wheel>
-        wheels;  ///< Per-wheel Magic Formula params, FL/FR/RL/RR.
-
-    std::string drive_mode =
-        "AWD";  ///< Mirrors vehicle.drive_mode ("AWD"/"FWD"/"RWD"); gates
-                ///< which wheels receive motor force.
-    /// Pacejka drivetrain model: Frx = (Cm1 - Cm2*vx)*T - Cr0 - Cd*vx^2.
-    double Cm1 =
-        8000.0;  ///< N, drive-force constant per driven wheel (T=1, vx=0).
-    double Cm2 = 150.0;  ///< N·s/m, per-driven-wheel back-EMF falloff.
-    double Cr0 = 60.0;   ///< N, total rolling resistance (whole car).
-    double Cd =
-        1.2;  ///< N·s²/m², total aerodynamic drag coefficient (whole car).
-
-    TireModelConfig() = default;
-  };
-
-  /**
    * @brief Set the battery controller.
    * @param battery Pointer to the battery controller.
    */
@@ -205,12 +175,14 @@ class CarlaROS2Backend {
   void set_control_config(double max_rpm, double max_steer_deg,
                           const ControlModeConfig& mode_cfg);
   /**
-   * @brief Set the ground-truth tire model configuration (Magic Formula +
-   * motor coefficient), used by publish_tire_forces().
-   * @param tire_model_cfg Tire model configuration.
+   * @brief Set which wheels the drivetrain turns ("AWD"/"FWD"/"RWD"), mirroring
+   * vehicle.drive_mode. Used by set_tire_friction() to keep the non-driven
+   * wheels at CarlaVehicle::kNonDrivenTireFriction when friction changes at
+   * runtime.
+   * @param drive_mode Drive mode string.
    */
-  void set_tire_model_config(const TireModelConfig& tire_model_cfg) {
-    tire_model_cfg_ = tire_model_cfg;
+  void set_drive_mode(const std::string& drive_mode) {
+    drive_mode_ = drive_mode;
   }
 
   // ── Camera / LiDAR registration ──────────────────────────────────
@@ -291,20 +263,11 @@ class CarlaROS2Backend {
    */
   void publish_motors();
   /**
-   * @brief Compute and publish ground-truth per-wheel tire forces (Magic
-   * Formula lateral force + motor-coefficient longitudinal force) from an
-   * already-fetched telemetry/control/physics snapshot. No CARLA RPCs.
+   * @brief Publish CARLA's own per-wheel slip, load, forces and torque from an
+   * already-fetched telemetry snapshot. No CARLA RPCs, no analytic model.
    * @param telem Vehicle telemetry snapshot (from GetTelemetryData()).
-   * @param ctrl Vehicle control snapshot (from GetControl()).
-   * @param phys Vehicle physics control (cached, from GetPhysicsControl()).
-   * @param speed_mps Signed forward speed (m/s), used to gate the Magic
-   * Formula near standstill where CARLA's slip-angle telemetry is
-   * numerically unstable (near 0/0).
    */
-  void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem,
-                           const carla::rpc::VehicleControl& ctrl,
-                           const carla::rpc::VehiclePhysicsControl& phys,
-                           double speed_mps);
+  void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem);
   /**
    * @brief Publish vehicle state data.
    */
@@ -401,7 +364,8 @@ class CarlaROS2Backend {
   double max_rpm_ = 150.0;
   double max_steer_deg_ = 16.0;
   ControlModeConfig control_mode_;
-  TireModelConfig tire_model_cfg_;
+  /// Mirrors vehicle.drive_mode ("AWD"/"FWD"/"RWD").
+  std::string drive_mode_ = "AWD";
 
   // PID states
   struct PIDState {
@@ -525,11 +489,10 @@ class CarlaROS2Backend {
    * @brief Set the ground friction coefficient of all tires at runtime.
    *
    * @details Writes CARLA's per-wheel @c WheelPhysicsControl::tire_friction.
-   * publish_tire_forces() reads this same field live every tick for the
-   * ground-truth Magic Formula's @c mu, so the simulated physics and the
-   * forces published on the tire_forces topic never disagree. Non-driven
-   * wheels keep the low-friction value that CarlaVehicle::apply_physics uses
-   * to emulate FWD/RWD.
+   * feedback/tire_forces reports CARLA's own per-wheel forces, so they follow
+   * this change with nothing else to keep in sync. Non-driven wheels keep the
+   * low-friction value that CarlaVehicle::apply_physics uses to emulate
+   * FWD/RWD.
    *
    * @param friction Friction coefficient (>= 0).
    */

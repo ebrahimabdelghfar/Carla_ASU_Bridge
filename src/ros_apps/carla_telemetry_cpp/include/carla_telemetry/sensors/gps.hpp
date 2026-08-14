@@ -6,6 +6,7 @@
 #include <carla/client/World.h>
 #include <carla/sensor/data/GnssMeasurement.h>
 
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <random>
@@ -84,6 +85,22 @@ class CarlaGPS {
                       bool use_noise = true) const;
 
   /**
+   * @brief Identity of the GNSS measurement the cached ENU vectors were built
+   * from: the world frame it was produced in and its sim timestamp.
+   *
+   * Consumers use this to tell a fresh fix from a re-read of the same one —
+   * the GNSS stream runs at its own rate, so polling faster than that serves
+   * the same bytes repeatedly. Freshness is keyed on the measurement's own
+   * identity, never on comparing the values.
+   *
+   * @param frame The world frame of the measurement behind the ENU cache
+   * @param sim_time The sim timestamp (seconds) of that measurement
+   * @return true if the cache holds a measurement
+   * @return false if no GNSS fix has been processed yet
+   */
+  bool enu_source(uint64_t& frame, double& sim_time) const;
+
+  /**
    * @brief Destroy the GPS sensor.
    */
   void destroy();
@@ -107,6 +124,11 @@ class CarlaGPS {
   double enu_gt_[3] = {0.0, 0.0,
                        0.0};  // ground-truth ENU (perfect GNSS reprojected)
   bool enu_valid_ = false;    // true once update() has completed at least once
+  // Identity of the GNSS measurement the cached ENU vectors came from, written
+  // together with them under lock_ so a reader never pairs one fix's frame
+  // number with another fix's position.
+  uint64_t enu_frame_ = 0;
+  double enu_sim_time_ = 0.0;
 
   mutable std::mutex lock_;
   carla::SharedPtr<carla::sensor::data::GnssMeasurement> last_gnss_;

@@ -251,15 +251,22 @@ std::optional<GpsState> CarlaGPS::update(double vx, double vy, double vz,
   };
 
   // Cache both ENU vectors so get_latest_enu() can serve them without
-  // recomputation. update() is called from the gps_loop thread which already
-  // holds the lock via the surrounding code path — safe to write here.
-  enu_gt_[0] = enu_gt[0];
-  enu_gt_[1] = enu_gt[1];
-  enu_gt_[2] = enu_gt[2];
-  enu_noisy_[0] = enu_noisy[0];
-  enu_noisy_[1] = enu_noisy[1];
-  enu_noisy_[2] = enu_noisy[2];
-  enu_valid_ = true;
+  // recomputation, together with the identity of the fix they came from so
+  // enu_source() can report it. Written under lock_ because the odometry loop
+  // reads the pair (position, source frame) from another thread and must never
+  // see one fix's frame number next to another fix's position.
+  {
+    std::lock_guard<std::mutex> lk(lock_);
+    enu_gt_[0] = enu_gt[0];
+    enu_gt_[1] = enu_gt[1];
+    enu_gt_[2] = enu_gt[2];
+    enu_noisy_[0] = enu_noisy[0];
+    enu_noisy_[1] = enu_noisy[1];
+    enu_noisy_[2] = enu_noisy[2];
+    enu_frame_ = static_cast<uint64_t>(gnss->GetFrame());
+    enu_sim_time_ = gnss->GetTimestamp();
+    enu_valid_ = true;
+  }
 
   // Step 2: Reproject noisy ENU from user's global_coordinates origin
   auto [lat_noisy_rad, lon_noisy_rad, alt_noisy] =
@@ -335,6 +342,14 @@ bool CarlaGPS::get_latest_enu(double& east, double& north, double& up,
   east = src[0];
   north = src[1];
   up = src[2];
+  return true;
+}
+
+bool CarlaGPS::enu_source(uint64_t& frame, double& sim_time) const {
+  std::lock_guard<std::mutex> lk(lock_);
+  if (!enu_valid_) return false;
+  frame = enu_frame_;
+  sim_time = enu_sim_time_;
   return true;
 }
 

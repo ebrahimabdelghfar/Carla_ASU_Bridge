@@ -20,7 +20,6 @@ CarlaTelemetryNode::CarlaTelemetryNode(const rclcpp::NodeOptions& options)
     : rclcpp_lifecycle::LifecycleNode("micropilot_carla_bridge_node", options) {
   // Declare parameters here
   this->declare_parameter<std::string>("config_file", "");
-  this->declare_parameter<std::string>("tire_model_config_file", "");
   this->declare_parameter<std::string>("open_manual_control", "");
   this->declare_parameter<std::string>("world_town", "");
 
@@ -47,12 +46,6 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
     config_path = "config/carla_interface_config.yaml";
   }
 
-  std::string tire_model_config_path;
-  this->get_parameter("tire_model_config_file", tire_model_config_path);
-  if (tire_model_config_path.empty()) {
-    tire_model_config_path = "config/tire_model_config.yaml";
-  }
-
   RCLCPP_INFO(this->get_logger(), "Loading config: %s", config_path.c_str());
   // A throw here would propagate out of the lifecycle callback and unwind the
   // executor, killing the process. Tear down the partial build and report
@@ -60,7 +53,6 @@ CarlaTelemetryNode::CallbackReturn CarlaTelemetryNode::on_configure(
   // retried without a stale half-built vehicle/backend in the way.
   try {
     load_config(config_path);
-    load_tire_model_config(tire_model_config_path);
     setup_vehicle();
     setup_pedestrians();
     setup_npc_vehicles();
@@ -147,10 +139,6 @@ void CarlaTelemetryNode::load_config(const std::string& path) {
       ded_clients && ded_clients["enabled"].as<bool>(false);
   RCLCPP_INFO(this->get_logger(), "dedicated_clients.enabled = %s",
               dedicated_clients_enabled_ ? "true" : "false");
-}
-
-void CarlaTelemetryNode::load_tire_model_config(const std::string& path) {
-  tire_model_config_ = YAML::LoadFile(path);
 }
 
 void CarlaTelemetryNode::setup_vehicle() {
@@ -341,24 +329,9 @@ void CarlaTelemetryNode::setup_vehicle() {
   backend_->set_control_config(ctrl["max_rpm"].as<double>(150),
                                ctrl["max_steer_deg"].as<double>(70), mode_cfg);
 
-  // ── Ground-truth tire model (Magic Formula + motor coefficient) ──────
-  CarlaROS2Backend::TireModelConfig tire_model_cfg;
-  tire_model_cfg.drive_mode = veh["drive_mode"].as<std::string>("AWD");
-  auto tm = tire_model_config_["tire_model"];
-  for (auto w : tm["magic_formula"]["wheels"]) {
-    CarlaROS2Backend::TireModelConfig::Wheel mfw;
-    mfw.position = w["position"].as<std::string>("");
-    mfw.B = w["B"].as<double>(10.0);
-    mfw.C = w["C"].as<double>(1.9);
-    mfw.E = w["E"].as<double>(0.97);
-    tire_model_cfg.wheels.push_back(mfw);
-  }
-  auto motor = tm["motor"];
-  tire_model_cfg.Cm1 = motor["Cm1"].as<double>(8000.0);
-  tire_model_cfg.Cm2 = motor["Cm2"].as<double>(150.0);
-  tire_model_cfg.Cr0 = motor["Cr0"].as<double>(60.0);
-  tire_model_cfg.Cd = motor["Cd"].as<double>(1.2);
-  backend_->set_tire_model_config(tire_model_cfg);
+  // Which wheels the drivetrain turns — used when tire friction is changed at
+  // runtime so the non-driven wheels keep their FWD/RWD emulation friction.
+  backend_->set_drive_mode(veh["drive_mode"].as<std::string>("AWD"));
 }
 
 void CarlaTelemetryNode::setup_pedestrians() {
@@ -553,6 +526,11 @@ void CarlaTelemetryNode::setup_sensors() {
         odom_cfg["broadcast_tf"].as<bool>(false),
         odom_cfg["mode"].as<std::string>("standard"), origin_lat, origin_lon,
         origin_alt, gnss_use_noise, noise_cfg);
+    // In "gnss" mode the position comes from the GNSS stream, so the odom loop
+    // asks the odometry for the identity of the fix behind it, not the world
+    // frame.
+    odometry_->bind_gps(gps_.get());
+    odom_follow_server_rate_ = odom_cfg["follow_server_rate"].as<bool>(false);
   }
 
   // Ground-truth 3D bounding boxes
@@ -1052,6 +1030,14 @@ void CarlaTelemetryNode::odom_loop(double hz) {
   double period = 1.0 / hz;
   auto next_time = clock::now();
 
+  // The last real sample: the state, the identity of the measurement it came
+  // from, and that measurement's own stamp. Predictions are integrated off it.
+  OdometryState anchor_state;
+  uint64_t anchor_frame = 0;
+  double anchor_epoch = 0.0;
+  bool have_anchor = false;
+  double last_pub_stamp = 0.0;  // duplicate guard: stamps strictly increase
+
   while (!shutdown_.load() && rclcpp::ok()) {
     auto now = clock::now();
     if (next_time > now) {
@@ -1067,12 +1053,85 @@ void CarlaTelemetryNode::odom_loop(double hz) {
     if (!vehicle_ || !vehicle_->is_running()) continue;
 
     try {
+      // CARLA serves actor state from a client-side snapshot cache: polling
+      // GetTransform() faster than the server ticks re-reads the same bytes.
+      // At fixed_delta_seconds 0.05 and update_rate 50 Hz a naive loop emits
+      // every pose 2-4 times — same content, different stamps. So a message
+      // here is one of exactly two things: a real sample, or a prediction of
+      // that sample forward in time.
+      //
+      // 1. Detect a real sample. GetSnapshot() is a local episode-state read,
+      //    not an RPC. A new world frame is necessary but not sufficient: in
+      //    mode "gnss" the position comes from the GNSS stream, so freshness
+      //    is keyed on the identity the measurement itself carries.
+      auto snapshot = vehicle_->world().GetSnapshot();
+      uint64_t frame = static_cast<uint64_t>(snapshot.GetFrame());
+      double frame_dt = snapshot.GetTimestamp().delta_seconds;  // SIM seconds
+      double frame_epoch =
+          sensor_sim_to_epoch(snapshot.GetTimestamp().elapsed_seconds);
+      ServerRate::instance().report(frame);
+
+      uint64_t src_frame = frame;  // "standard": the world frame IS the source
+      double src_epoch = frame_epoch;
+      double src_sim_time = 0.0;
+      if (odometry_->position_source(src_frame, src_sim_time))  // gnss only
+        src_epoch = sensor_sim_to_epoch(src_sim_time);
+
+      if (!have_anchor || src_frame != anchor_frame) {
+        // Decimate on the source frame number, the same way the LiDAR/camera/
+        // boxes decimate on the world frame: an update_rate below the server
+        // rate yields a frame SUBSET those sensors also keep, not a drifting
+        // sample. Above the server rate this is always true.
+        if (!sync_should_publish(src_frame, hz)) continue;
+        anchor_frame = src_frame;
+        anchor_epoch = src_epoch;  // the sample's own time, not the frame's
+        anchor_state = odometry_->get_state(vehicle_->actor(), gps_.get());
+        have_anchor = true;
+      }
+      if (!have_anchor) continue;
+
+      // 2. Integrate forward. dt = 0 emits the anchor itself; dt > 0 emits a
+      //    dead-reckoned prediction of it. Same publish path either way.
+      double dt = 0.0;
+      if (odom_follow_server_rate_) {
+        // One message per source sample, at that sample's own stamp: with dt
+        // pinned to 0 the anchor doesn't move between samples, so every
+        // intermediate wake-up falls out on the duplicate guard below and
+        // predict() is never called.
+        dt = 0.0;
+      } else if (anchor_epoch > last_pub_stamp) {
+        dt = 0.0;  // unpublished sample: emit it raw, frame-exact
+      } else {
+        // 3. Bound the horizon: a prediction must never carry a stamp past the
+        //    next real sample, or that sample lands behind it and odom steps
+        //    backwards. The bound has to be in SIM seconds — ServerRate::fps()
+        //    is frames per WALL second (1/fps = 79 ms against a 50 ms sim
+        //    frame at 0.64x realtime, 1.4 frames of overrun), so the frame's
+        //    own delta_seconds is the only figure in the right units. The
+        //    (frame_epoch - anchor_epoch) term extends the window when the
+        //    sample is late by whole frames.
+        double max_dt = 0.9 * frame_dt + (frame_epoch - anchor_epoch);
+        dt = sim_now_epoch() - anchor_epoch;
+        if (dt > max_dt) dt = max_dt;
+        if (dt < 0.0) dt = 0.0;
+      }
+
+      OdometryState state = anchor_state;
+      if (dt > 0.0) {
+        auto predicted = odometry_->predict(dt);
+        if (predicted) state = *predicted;
+      }
+
       // Stamp on the shared sim clock (same as the sensors), NOT wall time:
       // the server runs slower than realtime, so wall-stamped odom/TF would
       // drift ahead of the sim-stamped point clouds and the ego pose used to
-      // place the cloud would be from a later instant -> spatial shift.
-      double capture_time = sim_now_epoch();
-      auto state = odometry_->get_state(vehicle_->actor(), gps_.get());
+      // place the cloud would be from a later instant -> spatial shift. A real
+      // sample keeps its frame-exact stamp, byte-identical to the LiDAR/camera/
+      // boxes on shared frames.
+      double capture_time = anchor_epoch + dt;
+      if (capture_time <= last_pub_stamp) continue;  // no new content
+      last_pub_stamp = capture_time;
+
       state.capture_time = capture_time;
       if (backend_) {
         backend_->publish_odometry(state);
