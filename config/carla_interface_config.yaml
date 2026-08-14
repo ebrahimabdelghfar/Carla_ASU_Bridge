@@ -690,9 +690,8 @@ control:
   # A P-only speed PID cannot hold a stop: with a zero setpoint and the vehicle
   # already stationary the error is ~0, so it commands throttle 0 AND brake 0 —
   # neutral, free-wheeling. Any wheel rotation (the spawn drop onto the
-  # suspension, a slope, one stale throttle tick) then persists indefinitely,
-  # because damping_rate_zero_throttle_clutch_engaged / _disengaged in
-  # vehicle.physics are the only decay and are currently 0.0.
+  # suspension, a slope, one stale throttle tick) then decays only through
+  # damping_rate_zero_throttle_clutch_engaged / _disengaged in vehicle.physics.
   # When true, a zero speed command below standstill_speed_ms applies full
   # brake instead. Set false to restore coast-in-neutral.
   # ackermann_drive relies on CARLA's own controller to hold a stop instead.
