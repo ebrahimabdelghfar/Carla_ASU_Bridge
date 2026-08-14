@@ -20,24 +20,14 @@ namespace carla_telemetry {
 
 class CarlaROS2Backend;  // forward
 
-/// Owns a dedicated CARLA client connection that captures a single sensor.
-/// Used when carla.dedicated_clients.enabled is true to parallelize sensor
-/// streaming across multiple TCP connections (one client per sensor).
+// Owns a dedicated CARLA client connection that captures a single sensor.
+// Used when carla.dedicated_clients.enabled is true to parallelize sensor
+// streaming across multiple TCP connections (one client per sensor).
 template <class TSensor>
 class SensorClient {
  public:
   using Config = typename TSensor::Config;
 
-  /**
-   * @brief Construct a new SensorClient object
-   *
-   * @param host The host of the CARLA server
-   * @param port The port of the CARLA server
-   * @param timeout The timeout for the CARLA server
-   * @param vehicle_actor_id The actor ID of the ego vehicle
-   * @param role_name The role name of the ego vehicle
-   * @param cfg The configuration for the sensor
-   */
   SensorClient(const std::string& host, int port, double timeout,
                carla::rpc::ActorId vehicle_actor_id,
                const std::string& role_name, const Config& cfg)
@@ -77,25 +67,14 @@ class SensorClient {
     }
   }
 
-  /**
-   * @brief Start the sensor.
-   *
-   * @param backend The backend to use for publishing.
-   */
   void start(CarlaROS2Backend* backend) {
     if (ok_ && sensor_) sensor_->start(backend);
   }
 
-  /**
-   * @brief Stop the sensor.
-   */
   void stop() {
     if (sensor_) sensor_->stop();
   }
 
-  /**
-   * @brief Destroy the sensor.
-   */
   void destroy() {
     if (sensor_) {
       sensor_->destroy();
@@ -107,29 +86,10 @@ class SensorClient {
     ok_ = false;
   }
 
-  /**
-   * @brief Check if the sensor is OK.
-   *
-   * @return true if the sensor is OK
-   * @return false if the sensor is not OK
-   */
   bool ok() const { return ok_; }
-
-  /**
-   * @brief Get the name of the sensor.
-   *
-   * @return const std::string& The name of the sensor
-   */
   const std::string& name() const { return name_; }
 
  private:
-  /**
-   * @brief Resolve the vehicle actor from the actor id and role name.
-   *
-   * @param id The actor id of the ego vehicle
-   * @param role_name The role name of the ego vehicle
-   * @return carla::SharedPtr<carla::client::Actor> The ego vehicle actor
-   */
   carla::SharedPtr<carla::client::Actor> resolve_vehicle(
       carla::rpc::ActorId id, const std::string& role_name) {
     // The main client spawns the vehicle and ticks once before sensor setup,

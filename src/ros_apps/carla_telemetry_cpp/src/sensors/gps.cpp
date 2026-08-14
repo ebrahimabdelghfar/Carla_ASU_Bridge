@@ -104,8 +104,8 @@ void enu_to_ecef(const double enu[3], double origin_lat_rad,
   z = z0 + dz;
 }
 
-/// Convert local ENU offset [x_east, y_north, z_up] (metres) to (lat_rad,
-/// lon_rad, alt).
+// Convert local ENU offset [x_east, y_north, z_up] (metres) to (lat_rad,
+// lon_rad, alt).
 std::tuple<double, double, double> reprojection(const double enu[3],
                                                 double origin_lat_rad,
                                                 double origin_lon_rad,
@@ -117,7 +117,7 @@ std::tuple<double, double, double> reprojection(const double enu[3],
   return {lat, lon, alt};
 }
 
-/// WGS-84 (lat, lon, alt) → ENU metres from origin.
+// WGS-84 (lat, lon, alt) → ENU metres from origin.
 void latlon_to_enu_offset(double lat_rad, double lon_rad, double alt,
                           double origin_lat_rad, double origin_lon_rad,
                           double origin_alt, double out[3]) {

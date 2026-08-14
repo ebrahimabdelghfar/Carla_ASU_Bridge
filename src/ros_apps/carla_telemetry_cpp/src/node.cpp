@@ -829,9 +829,7 @@ void CarlaTelemetryNode::setup_sensors() {
   sensor_mgr_->start_all(backend_.get());
 }
 
-// ---------------------------------------------------------------------------
-// Dedicated sensor threads (matching Python _start_sensor_thread pattern)
-// ---------------------------------------------------------------------------
+// Dedicated sensor threads (matching Python _start_sensor_thread pattern).
 
 void CarlaTelemetryNode::start_sensor_threads() {
   auto cfg = config_;
@@ -946,8 +944,7 @@ void CarlaTelemetryNode::gps_loop(double hz) {
         state->capture_time = capture_time;
         backend_->publish_gps(*state);
       }
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
@@ -986,8 +983,7 @@ void CarlaTelemetryNode::battery_loop(double hz) {
       if (backend_) {
         backend_->publish_battery(state);
       }
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
@@ -1019,8 +1015,7 @@ void CarlaTelemetryNode::imu_loop(double hz) {
         state->capture_time = capture_time;
         backend_->publish_imu(*state);
       }
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
@@ -1136,8 +1131,7 @@ void CarlaTelemetryNode::odom_loop(double hz) {
       if (backend_) {
         backend_->publish_odometry(state);
       }
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
@@ -1166,8 +1160,7 @@ void CarlaTelemetryNode::boxes_loop() {
       if (backend_) {
         backend_->publish_ground_truth_boxes(state);
       }
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
@@ -1198,16 +1191,13 @@ void CarlaTelemetryNode::telemetry_loop(double hz) {
       auto t = PerfMonitor::tick();
       if (backend_) backend_->publish_vehicle_feedback();
       perf.record("telemetry.loop", t);
-    } catch (const std::exception& e) {
-      // Silently continue on CARLA errors
+    } catch (const std::exception&) {
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Control loop — only ticks world + applies control (sensors on own threads)
-// ---------------------------------------------------------------------------
-
+// Control loop — only ticks world + applies control (sensors on own threads).
+//
 // Runs on its own thread, NOT on an rclcpp timer: the timer lived in a callback
 // group that had to be created per configure, which corrupted the Humble
 // executor wait set and latched change_state (bug-005/bug-006). As a plain

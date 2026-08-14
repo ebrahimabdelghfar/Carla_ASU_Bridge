@@ -17,12 +17,7 @@ class SimClock {
     return c;
   }
 
-  /**
-   * @brief Convert a sensor frame's sim timestamp to the shared epoch clock.
-   *
-   * @param sim_ts The sim timestamp
-   * @return double The epoch timestamp
-   */
+  // Convert a sensor frame's sim timestamp to the shared epoch clock.
   double to_epoch(double sim_ts) {
     std::lock_guard<std::mutex> lk(m_);
     double wall = wall_now();
@@ -51,22 +46,14 @@ class SimClock {
     return epoch0_ + (sim_ts - sim0_);
   }
 
-  /**
-   * @brief Get the latest sim-epoch, without wall extrapolation.
-   *
-   * @return double The latest sim-epoch
-   */
+  // Get the latest sim-epoch, without wall extrapolation.
   double latest_epoch() {
     std::lock_guard<std::mutex> lk(m_);
     if (!init_) return wall_now();  // no frame yet: fall back
     return epoch0_ + (latest_sim_ - sim0_);
   }
 
-  /**
-   * @brief Get the current sim-epoch, extrapolated by real elapsed wall time.
-   *
-   * @return double The current sim-epoch
-   */
+  // Get the current sim-epoch, extrapolated by real elapsed wall time.
   double now_epoch() {
     std::lock_guard<std::mutex> lk(m_);
     if (!init_) return wall_now();  // no frame yet: fall back
@@ -86,11 +73,6 @@ class SimClock {
   }
 
  private:
-  /**
-   * @brief Get the current wall time as a double.
-   *
-   * @return double The current wall time
-   */
   static double wall_now() {
     return std::chrono::duration<double>(
                std::chrono::system_clock::now().time_since_epoch())
@@ -109,40 +91,19 @@ class SimClock {
   double last_now_ = 0.0;  // monotonic guard for now_epoch()
 };
 
-/**
- * @brief Convert a sensor frame's sim timestamp to the shared epoch clock.
- *
- * @param sim_ts The sim timestamp
- * @return double The epoch timestamp
- */
 inline double sensor_sim_to_epoch(double sim_ts) {
   return SimClock::instance().to_epoch(sim_ts);
 }
 
-/**
- * @brief Get the current sim-epoch, extrapolated by real elapsed wall time.
- *
- * @return double The current sim-epoch
- */
 inline double sim_now_epoch() { return SimClock::instance().now_epoch(); }
 
-/**
- * @brief Get the latest sim-epoch, without wall extrapolation.
- *
- * @return double The latest sim-epoch
- */
 inline double sim_latest_epoch() { return SimClock::instance().latest_epoch(); }
 
-/**
- * @brief Process-wide estimator of the server's ACTUAL wall-clock frame rate,
- * shared by all sensors. The publish decimation is derived from this instead of
- * the config target, so when the server can't hold fixed_delta (e.g. runs 14 Hz
- * not 20 Hz) every sensor still emits its frames at >= its update_rate rather
- * than collapsing.
- *
- * @param frame The current frame number
- * @return double The estimated FPS
- */
+// Process-wide estimator of the server's actual wall-clock frame rate, shared
+// by all sensors. The publish decimation is derived from this instead of the
+// config target, so when the server can't hold fixed_delta (e.g. runs 14 Hz
+// not 20 Hz) every sensor still emits its frames at >= its update_rate rather
+// than collapsing.
 class ServerRate {
  public:
   static ServerRate& instance() {
@@ -150,12 +111,8 @@ class ServerRate {
     return r;
   }
 
-  /**
-   * @brief Feed the newest world frame seen by any sensor. Recomputes fps over
-   * a ~1 s sliding wall window. Cheap; safe to call from every sensor callback.
-   *
-   * @param frame The current frame number
-   */
+  // Feed the newest world frame seen by any sensor. Recomputes fps over a ~1 s
+  // sliding wall window. Cheap; safe to call from every sensor callback.
   void report(uint64_t frame) {
     std::lock_guard<std::mutex> lk(m_);
     auto now = std::chrono::steady_clock::now();
@@ -187,14 +144,7 @@ class ServerRate {
   std::atomic<double> fps_{0.0};
 };
 
-/**
- * @brief Check if the current frame should be published.
- *
- * @param frame The current frame number
- * @param update_rate The desired update rate
- * @return true If the current frame should be published
- * @return false Otherwise
- */
+// Check if the current frame should be published at the given update rate.
 inline bool sync_should_publish(uint64_t frame, double update_rate) {
   double fps = ServerRate::instance().fps();
   if (fps <= 0.0 || update_rate <= 0.0 || frame == 0)

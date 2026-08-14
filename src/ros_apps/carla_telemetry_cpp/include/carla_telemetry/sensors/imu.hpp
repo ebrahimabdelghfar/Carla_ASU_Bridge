@@ -13,8 +13,7 @@
 
 namespace carla_telemetry {
 
-/// CARLA IMU sensor wrapper.
-/// Direct port of CarlaIMU from imu.py.
+// CARLA IMU sensor wrapper. Direct port of CarlaIMU from imu.py.
 class CarlaIMU {
  public:
   CarlaIMU(carla::client::World& world,
@@ -23,24 +22,11 @@ class CarlaIMU {
            float y = 0.0f, float z = 0.0f, float roll = 0.0f,
            float pitch = 0.0f, float yaw = 0.0f);
 
-  /**
-   * @brief Get the latest IMU state.
-   *
-   * @return The latest IMU state.
-   */
   std::optional<ImuState> get_state();
 
-  /**
-   * @brief Destroy the IMU sensor.
-   */
   void destroy();
 
  private:
-  /**
-   * @brief Callback for IMU data.
-   *
-   * @param data The IMU data.
-   */
   void on_imu(carla::SharedPtr<carla::sensor::SensorData> data);
 
   std::string frame_id_;

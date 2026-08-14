@@ -16,8 +16,8 @@ namespace {
 constexpr double kDeg2Rad = M_PI / 180.0;
 constexpr double kMovingSpeed = 0.5;  // m/s threshold for "moving"
 
-/// Classify a CARLA actor by its blueprint type_id into a Waymo class.
-/// Returns empty string for actors that should be skipped.
+// Classify a CARLA actor by its blueprint type_id into a Waymo class.
+// Returns empty string for actors that should be skipped.
 std::string classify(const carla::SharedPtr<carla::client::Actor>& a) {
   const std::string& type_id = a->GetTypeId();
   if (type_id.rfind("vehicle.", 0) == 0) {
@@ -132,7 +132,7 @@ GroundTruthBoxes CarlaGroundTruthBoxes::get_boxes(
     out.boxes.push_back(std::move(b));
   };
 
-  // ── Dynamic actors (vehicles / cyclists / pedestrians / signs) ────────
+  // Dynamic actors (vehicles / cyclists / pedestrians / signs)
   auto actors = world.GetActors();
   for (auto a : *actors) {
     std::string label = classify(a);
@@ -159,7 +159,7 @@ GroundTruthBoxes CarlaGroundTruthBoxes::get_boxes(
              bbox.extent, v.x, v.y);
   }
 
-  // ── Parked / map-baked vehicles (environment objects) ─────────────────
+  // Parked / map-baked vehicles (environment objects)
   // Not actors, so GetActors() misses them. They never move → fetch once.
   if (!env_vehicles_loaded_) {
     env_vehicles_ = world.GetEnvironmentObjects(

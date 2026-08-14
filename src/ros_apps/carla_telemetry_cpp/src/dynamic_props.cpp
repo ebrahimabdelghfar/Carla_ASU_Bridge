@@ -16,7 +16,7 @@ CarlaDynamicProps::CarlaDynamicProps(carla::client::World& world,
                                      const carla::geom::Location& ego_loc) {
   if (!cfg.enabled || cfg.count <= 0) return;
 
-  // ── Resolve blueprints ──────────────────────────────────────────────
+  // Resolve blueprints
   auto bp_lib = world.GetBlueprintLibrary();
   std::vector<carla::actors::ActorBlueprint> valid_bps;
 
@@ -36,7 +36,7 @@ CarlaDynamicProps::CarlaDynamicProps(carla::client::World& world,
     return;
   }
 
-  // ── Cleanup previous props ──────────────────────────────────────────
+  // Cleanup previous props
   auto all_actors = world.GetActors();
   int cleaned = 0;
   for (auto a : *all_actors) {

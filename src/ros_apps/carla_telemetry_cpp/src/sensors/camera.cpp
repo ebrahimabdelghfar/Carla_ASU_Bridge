@@ -156,8 +156,7 @@ void CarlaCamera::publish_loop() {
         // End-to-end per this sensor/client: server callback → published.
         perf.record(name_ + ".total", entry.arrival_tick);
       }
-    } catch (const std::exception& e) {
-      // Log warning
+    } catch (const std::exception&) {
     }
   }
 }

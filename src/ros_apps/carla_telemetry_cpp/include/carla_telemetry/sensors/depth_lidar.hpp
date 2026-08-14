@@ -19,14 +19,14 @@ namespace carla_telemetry {
 
 class CarlaROS2Backend;  // forward
 
-/// GPU depth-camera LiDAR: a ring of `sensor.camera.depth` cameras (rendered on
-/// the GPU, no CPU raycasting) whose depth pixels are reprojected to a single
-/// PointCloud2 in the LiDAR frame. Real-time, async, does not touch the RGB
-/// cameras. Different sensor model than ray_cast — a reprojected depth raster,
-/// not a spinning-beam scan: no intensity, no per-beam dropoff/atmosphere.
-///
-/// Satisfies the SensorClient TSensor contract (nested Config with `name`,
-/// ctor(World&, SharedPtr<Actor>, const Config&), start/stop/destroy/name).
+// GPU depth-camera LiDAR: a ring of `sensor.camera.depth` cameras (rendered on
+// the GPU, no CPU raycasting) whose depth pixels are reprojected to a single
+// PointCloud2 in the LiDAR frame. Real-time, async, does not touch the RGB
+// cameras. Different sensor model than ray_cast — a reprojected depth raster,
+// not a spinning-beam scan: no intensity, no per-beam dropoff/atmosphere.
+//
+// Satisfies the SensorClient TSensor contract (nested Config with `name`,
+// ctor(World&, SharedPtr<Actor>, const Config&), start/stop/destroy/name).
 class CarlaDepthLidar {
  public:
   struct Config {
@@ -47,43 +47,15 @@ class CarlaDepthLidar {
     int point_stride = 2;    // pixel decimation (1 = every pixel)
   };
 
-  /**
-   * @brief Construct a new CarlaDepthLidar object
-   *
-   * @param world The CARLA world
-   * @param vehicle The CARLA vehicle
-   * @param cfg The configuration for the depth lidar
-   */
   CarlaDepthLidar(carla::client::World& world,
                   carla::SharedPtr<carla::client::Actor> vehicle,
                   const Config& cfg);
 
-  /**
-   * @brief Start the depth lidar sensor.
-   *
-   * @param backend The backend to use for publishing.
-   */
   void start(CarlaROS2Backend* backend);
-  /**
-   * @brief Stop the depth lidar sensor.
-   */
   void stop();
-  /**
-   * @brief Destroy the depth lidar sensor.
-   */
   void destroy();
 
-  /**
-   * @brief Get the name of the depth lidar sensor.
-   *
-   * @return const std::string& The name of the depth lidar sensor
-   */
   const std::string& name() const { return name_; }
-  /**
-   * @brief Get the frame id of the depth lidar sensor.
-   *
-   * @return const std::string& The frame id of the depth lidar sensor
-   */
   const std::string& frame_id() const { return frame_id_; }
 
  private:

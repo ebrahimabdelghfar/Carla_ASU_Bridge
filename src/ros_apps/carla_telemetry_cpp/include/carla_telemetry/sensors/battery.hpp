@@ -7,30 +7,10 @@
 
 namespace carla_telemetry {
 
-/**
- * @brief Software battery simulation — no CARLA sensor required.
- * Direct port of CarlaBattery from battery.py.
- */
+// Software battery simulation — no CARLA sensor required.
+// Direct port of CarlaBattery from battery.py.
 class CarlaBattery {
  public:
-  /**
-   * @brief Construct a new CarlaBattery object.
-   * @param consumption_mode Consumption mode.
-   * @param voltage Voltage.
-   * @param e0 Open-circuit voltage.
-   * @param e1 Open-circuit voltage.
-   * @param capacity Capacity.
-   * @param initial_charge Initial charge.
-   * @param resistance Resistance.
-   * @param tau Tau.
-   * @param base_power_load Base power load.
-   * @param power_per_speed Power per speed.
-   * @param start_draining Start draining.
-   * @param enable_recharge Enable recharge.
-   * @param charging_time Charging time.
-   * @param update_rate Update rate.
-   * @param ambient_temperature Ambient temperature.
-   */
   explicit CarlaBattery(const std::string& consumption_mode = "velocity_based",
                         double voltage = 12.6, double e0 = 12.6,
                         double e1 = -2.8, double capacity = 10.0,
@@ -42,56 +22,19 @@ class CarlaBattery {
                         double charging_time = 1.0, double update_rate = 10.0,
                         double ambient_temperature = 25.0);
 
-  /**
-   * @brief Advance battery model. Returns updated state.
-   * @param speed_ms Speed in meters per second.
-   * @param dt Time step in seconds.
-   * @return BatteryState.
-   */
+  // Advance the battery model by dt seconds at the given speed.
   BatteryState update(double speed_ms, double dt);
 
-  /**
-   * @brief Get the latest battery state.
-   * @return const BatteryState& The latest battery state.
-   */
   const BatteryState& state() const { return state_; }
-  /**
-   * @brief Check if the battery is depleted.
-   * @return true if the battery is depleted.
-   * @return false otherwise.
-   */
   bool is_depleted() const { return is_depleted_; }
-  /**
-   * @brief Check if the battery is draining.
-   * @return true if the battery is draining.
-   * @return false otherwise.
-   */
   bool is_draining() const { return is_draining_; }
 
-  /**
-   * @brief Start draining.
-   */
   void start_draining();
-  /**
-   * @brief Stop draining.
-   */
   void stop_draining();
-  /**
-   * @brief Start charging.
-   */
   void start_charging();
-  /**
-   * @brief Stop charging.
-   */
   void stop_charging();
 
  private:
-  /**
-   * @brief Make a battery state.
-   * @param total_power Total power consumption.
-   * @param v_oc Open-circuit voltage.
-   * @return BatteryState.
-   */
   BatteryState make_state(double total_power = 0.0, double v_oc = -1.0) const;
 
   double v_nom_, e0_, e1_;

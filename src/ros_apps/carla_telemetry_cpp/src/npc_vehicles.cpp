@@ -16,7 +16,7 @@ CarlaNpcVehicles::CarlaNpcVehicles(carla::client::World& world,
                                    const carla::geom::Location& ego_loc) {
   if (!cfg.enabled || cfg.count <= 0) return;
 
-  // ── Resolve blueprints ──────────────────────────────────────────────
+  // Resolve blueprints
   auto bp_lib = world.GetBlueprintLibrary();
   std::vector<carla::actors::ActorBlueprint> valid_bps;
 
@@ -36,7 +36,7 @@ CarlaNpcVehicles::CarlaNpcVehicles(carla::client::World& world,
     return;
   }
 
-  // ── Collect road-aligned spawn points via xodr waypoints ─────────────
+  // Collect road-aligned spawn points via xodr waypoints
   // Use GenerateWaypoints to get positions on actual road network.
   // This avoids spawning at off-road recommended points on custom maps
   // which cause TM to circle/jerk trying to find the nearest road.
@@ -78,7 +78,7 @@ CarlaNpcVehicles::CarlaNpcVehicles(carla::client::World& world,
   std::mt19937 rng(std::random_device{}());
   std::shuffle(candidates.begin(), candidates.end(), rng);
 
-  // ── Spawn vehicles with minimum spacing ─────────────────────────────
+  // Spawn vehicles with minimum spacing
   int spawned = 0;
   std::vector<carla::geom::Location> used_locations;
 
@@ -122,7 +122,7 @@ CarlaNpcVehicles::CarlaNpcVehicles(carla::client::World& world,
     world.WaitForTick(std::chrono::seconds(10));
   }
 
-  // ── Enable autopilot via Traffic Manager ────────────────────────────
+  // Enable autopilot via Traffic Manager
   // TM registration is an RPC to the TM server on tm_port with a hardcoded
   // 2000ms timeout (TM_TIMEOUT). A stale TM server from a prior unclean run,
   // or an overloaded CARLA server, makes register_vehicle time out. Catch it

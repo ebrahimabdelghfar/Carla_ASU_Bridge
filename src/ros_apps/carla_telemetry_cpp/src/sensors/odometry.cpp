@@ -8,8 +8,8 @@ namespace carla_telemetry {
 
 namespace {
 
-/// Rotate a world-frame vector into the body frame described by the unit
-/// quaternion (qx, qy, qz, qw): v' = q_inv * v * q, with q_inv = conjugate.
+// Rotate a world-frame vector into the body frame described by the unit
+// quaternion (qx, qy, qz, qw): v' = q_inv * v * q, with q_inv = conjugate.
 void rotate_to_body(double qx, double qy, double qz, double qw, double in_x,
                     double in_y, double in_z, double& out_x, double& out_y,
                     double& out_z) {
@@ -23,7 +23,7 @@ void rotate_to_body(double qx, double qy, double qz, double qw, double in_x,
   out_z = t2 * qw + t3 * qz + t0 * qy - t1 * qx;
 }
 
-/// Inverse of rotate_to_body: body frame → world frame (v' = q * v * q_inv).
+// Inverse of rotate_to_body: body frame → world frame (v' = q * v * q_inv).
 void rotate_to_world(double qx, double qy, double qz, double qw, double in_x,
                      double in_y, double in_z, double& out_x, double& out_y,
                      double& out_z) {

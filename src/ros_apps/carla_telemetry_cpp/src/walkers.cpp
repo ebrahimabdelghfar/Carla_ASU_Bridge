@@ -79,7 +79,7 @@ CarlaWalkers::CarlaWalkers(carla::client::World& world,
   // The AI setup (Start/collision/speed/destination) has no batch command, so
   // it stays a loop — but those are light nav ops, not actor spawns.
 
-  // ── Phase 1: batch-spawn all walkers ─────────────────────────────────
+  // Phase 1: batch-spawn all walkers
   std::vector<carla::rpc::Command> spawn_batch;
   spawn_batch.reserve(count);
   for (int i = 0; i < count; ++i) {
@@ -107,7 +107,7 @@ CarlaWalkers::CarlaWalkers(carla::client::World& world,
   // Let walkers register in the simulation before attaching controllers.
   advance_frame();
 
-  // ── Phase 2: batch-spawn one AI controller per walker ────────────────
+  // Phase 2: batch-spawn one AI controller per walker
   auto controller_desc = controller_bp.MakeActorDescription();
   std::vector<carla::rpc::Command> ctrl_batch;
   ctrl_batch.reserve(walker_ids.size());

@@ -21,8 +21,8 @@ namespace carla_telemetry {
 
 class CarlaROS2Backend;  // forward
 
-/// CARLA camera sensor wrapper with per-camera publish thread.
-/// Direct port of CarlaCamera from camera.py.
+// CARLA camera sensor wrapper with per-camera publish thread.
+// Direct port of CarlaCamera from camera.py.
 class CarlaCamera {
  public:
   struct Config {

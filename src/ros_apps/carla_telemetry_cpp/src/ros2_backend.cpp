@@ -21,7 +21,7 @@ std::string get_or(const std::unordered_map<std::string, std::string>& m,
   return it != m.end() ? it->second : def;
 }
 
-/// Convert wall-clock epoch seconds to ROS Time stamp.
+// Convert wall-clock epoch seconds to ROS Time stamp.
 builtin_interfaces::msg::Time epoch_to_stamp(double t) {
   builtin_interfaces::msg::Time stamp;
   stamp.sec = static_cast<int32_t>(t);
@@ -405,7 +405,7 @@ void CarlaROS2Backend::set_control_config(double max_rpm, double max_steer_deg,
   }
 }
 
-// ── Camera / LiDAR registration ──────────────────────────────────────
+// Camera / LiDAR registration
 
 void CarlaROS2Backend::register_camera(const std::string& name,
                                        const std::string& topic_rgb,
@@ -433,7 +433,7 @@ void CarlaROS2Backend::register_lidar(const std::string& name,
       node_->create_publisher<sensor_msgs::msg::PointCloud2>(t, qos);
 }
 
-// ── Publish GPS ──────────────────────────────────────────────────────
+// Publish GPS
 
 void CarlaROS2Backend::publish_gps(const GpsState& g) {
   auto stamp = epoch_to_stamp(g.capture_time);
@@ -460,7 +460,7 @@ void CarlaROS2Backend::publish_gps(const GpsState& g) {
   gps_vel_pub_->publish(tw);
 }
 
-// ── Publish Battery ──────────────────────────────────────────────────
+// Publish Battery
 
 void CarlaROS2Backend::publish_battery(const BatteryState& b) {
   sensor_msgs::msg::BatteryState msg;
@@ -485,7 +485,7 @@ void CarlaROS2Backend::publish_battery(const BatteryState& b) {
   battery_pub_->publish(msg);
 }
 
-// ── Publish IMU ──────────────────────────────────────────────────────
+// Publish IMU
 
 void CarlaROS2Backend::publish_imu(const ImuState& s) {
   sensor_msgs::msg::Imu msg;
@@ -504,7 +504,7 @@ void CarlaROS2Backend::publish_imu(const ImuState& s) {
   imu_pub_->publish(msg);
 }
 
-// ── Publish Camera ───────────────────────────────────────────────────
+// Publish Camera
 
 void CarlaROS2Backend::publish_camera_image(CameraData& d) {
   if (camera_pubs_.find(d.frame_id) == camera_pubs_.end())
@@ -557,7 +557,7 @@ void CarlaROS2Backend::publish_camera_info(const CameraData& d) {
   camera_pubs_[d.frame_id].info->publish(msg);
 }
 
-// ── Publish Odometry ─────────────────────────────────────────────────
+// Publish Odometry
 
 void CarlaROS2Backend::publish_odometry(const OdometryState& o) {
   auto stamp = epoch_to_stamp(o.capture_time);
@@ -602,7 +602,7 @@ void CarlaROS2Backend::publish_odometry(const OdometryState& o) {
   }
 }
 
-// ── Publish ground-truth 3D bounding boxes ───────────────────────────
+// Publish ground-truth 3D bounding boxes
 
 void CarlaROS2Backend::publish_ground_truth_boxes(const GroundTruthBoxes& gt) {
   auto stamp = epoch_to_stamp(gt.capture_time);
@@ -626,7 +626,7 @@ void CarlaROS2Backend::publish_ground_truth_boxes(const GroundTruthBoxes& gt) {
                   b.track_id, static_cast<int>(b.score), b.vx, b.vy,
                   b.attribute.c_str());
 
-    // ── Cube ──────────────────────────────────────────────────────
+    // Cube
     visualization_msgs::msg::Marker cube;
     cube.header.frame_id = gt.frame_id;
     cube.header.stamp = stamp;
@@ -652,33 +652,12 @@ void CarlaROS2Backend::publish_ground_truth_boxes(const GroundTruthBoxes& gt) {
     cube.text = buf;
     cube.lifetime = lifetime;
     arr.markers.push_back(cube);
-
-    // // ── Text label ────────────────────────────────────────────────
-    // visualization_msgs::msg::Marker text;
-    // text.header.frame_id = gt.frame_id;
-    // text.header.stamp = stamp;
-    // text.ns = "gt_labels";
-    // text.id = static_cast<int>(b.track_id);
-    // text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-    // text.action = visualization_msgs::msg::Marker::ADD;
-    // text.pose.position.x = b.px;
-    // text.pose.position.y = b.py;
-    // text.pose.position.z = b.pz + b.sz / 2.0 + 0.3;
-    // text.pose.orientation.w = 1.0;
-    // text.scale.x = 0.4;  // ignored by TEXT_VIEW_FACING; set to avoid zero
-    // scale text.scale.y = 0.4; text.scale.z = 0.4; text.color.r = 1.0f;
-    // text.color.g = 1.0f;
-    // text.color.b = 1.0f;
-    // text.color.a = 1.0f;
-    // text.text = buf;
-    // text.lifetime = lifetime;
-    // arr.markers.push_back(text);
   }
 
   boxes_pub_->publish(arr);
 }
 
-// ── Publish PointCloud2 ──────────────────────────────────────────────
+// Publish PointCloud2
 
 void CarlaROS2Backend::publish_point_cloud(const LidarData& d) {
   if (d.data.empty() || d.num_points == 0) return;
@@ -719,7 +698,7 @@ void CarlaROS2Backend::publish_point_cloud(const LidarData& d) {
   lidar_pubs_[key]->publish(msg);
 }
 
-// ── Speed / Steering ─────────────────────────────────────────────────
+// Speed / Steering
 
 void CarlaROS2Backend::publish_speed(double speed_ms) {
   std_msgs::msg::Float32 msg;
@@ -910,7 +889,7 @@ void CarlaROS2Backend::publish_tire_forces(
   tire_forces_pub_->publish(msg);
 }
 
-// ── Publish Vehicle State (lights / blinkers / steering) ─────────────
+// Publish Vehicle State (lights / blinkers / steering)
 
 void CarlaROS2Backend::publish_vehicle_state() {
   if (!vehicle_actor_) return;
@@ -985,7 +964,7 @@ void CarlaROS2Backend::publish_clock() {
   clock_pub_->publish(msg);
 }
 
-// ── Static TF ────────────────────────────────────────────────────────
+// Static TF
 
 void CarlaROS2Backend::publish_static_transform(const std::string& parent,
                                                 const std::string& child,
@@ -1028,7 +1007,7 @@ void CarlaROS2Backend::publish_optical_transform(const std::string& parent,
   static_tf_broadcaster_->sendTransform(static_transforms_);
 }
 
-// ── Cached CARLA state helpers ───────────────────────────────────────
+// Cached CARLA state helpers
 
 carla::rpc::VehiclePhysicsControl CarlaROS2Backend::physics(
     carla::client::Vehicle& v) {
@@ -1123,14 +1102,14 @@ void CarlaROS2Backend::set_light_bit(carla::client::Vehicle& v, uint32_t flag,
   }
 }
 
-// ── Merged vehicle feedback (one snapshot) ───────────────────────────
+// Merged vehicle feedback (one snapshot)
 
 void CarlaROS2Backend::publish_vehicle_feedback() {
   if (!vehicle_actor_) return;
   auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
   if (!v) return;
 
-  // ── ONE snapshot: each Get* below is a blocking server RPC ──────────
+  // ONE snapshot: each Get* below is a blocking server RPC
   double t_rpc;
   t_rpc = PerfMonitor::tick();
   auto ctrl = v->GetControl();  // 1 RPC
@@ -1181,7 +1160,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   auto forward = v->GetTransform().GetForwardVector();
   perf.record("rpc.GetTransform", t_rpc);
 
-  // ── Speed (forward-projected, signed) ────────────────────────────────
+  // Speed (forward-projected, signed)
   // Dot with the forward vector directly rather than taking the full 3D
   // velocity magnitude and re-signing it: magnitude folds in lateral slip
   // and vertical (suspension squat/bounce) velocity components, which
@@ -1196,7 +1175,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     speed_pub_->publish(m);
   }
 
-  // ── Steering echo + joints (ROS sign = negated CARLA angle) ─────────
+  // Steering echo + joints (ROS sign = negated CARLA angle)
   float sFL = -rawFL, sFR = -rawFR, sRL = -rawRL, sRR = -rawRR;
   {
     std_msgs::msg::Float32 e;
@@ -1213,7 +1192,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     steer_angles_pub_->publish(js);
   }
 
-  // ── Motors JSON (raw per-wheel angles) ──────────────────────────────
+  // Motors JSON (raw per-wheel angles)
   if (telem.wheels.size() >= 4 && phys.wheels.size() >= 4) {
     float rFL = phys.wheels[0].radius / 100.0f,
           rFR = phys.wheels[1].radius / 100.0f;
@@ -1246,10 +1225,10 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     motors_pub_->publish(m);
   }
 
-  // ── Per-wheel tire state + forces (CARLA telemetry passthrough) ─────
+  // Per-wheel tire state + forces (CARLA telemetry passthrough)
   publish_tire_forces(telem);
 
-  // ── Vehicle-state JSON (cached light bitmask) ───────────────────────
+  // Vehicle-state JSON (cached light bitmask)
   {
     using LS = carla::rpc::VehicleLightState::LightState;
     auto has = [ls](LS f) { return (ls & static_cast<uint32_t>(f)) != 0; };
@@ -1299,7 +1278,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
     vehicle_state_pub_->publish(m);
   }
 
-  // ── Autonomous-mode flag ────────────────────────────────────────────
+  // Autonomous-mode flag
   {
     std_msgs::msg::Bool m;
     m.data = !manual_control_override_;
@@ -1307,7 +1286,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   }
 }
 
-// ── Vehicle Control ──────────────────────────────────────────────────
+// Vehicle Control
 
 void CarlaROS2Backend::apply_vehicle_control() {
   if (!vehicle_actor_) return;
@@ -1470,7 +1449,7 @@ void CarlaROS2Backend::apply_vehicle_control() {
       ctrl.brake > 0.5f);
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// Helpers
 
 void CarlaROS2Backend::carla_rpy_to_ros_quaternion(double r, double p, double y,
                                                    double& qx, double& qy,

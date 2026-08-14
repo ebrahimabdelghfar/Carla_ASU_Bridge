@@ -14,14 +14,14 @@
 
 namespace carla_telemetry {
 
-/// Ground-truth 3D bounding boxes of world actors, expressed in the ego
-/// base_link frame. Read directly from CARLA each tick — no sensor spawned.
+// Ground-truth 3D bounding boxes of world actors, expressed in the ego
+// base_link frame. Read directly from CARLA each tick — no sensor spawned.
 class CarlaGroundTruthBoxes {
  public:
-  /// Detection window — mimics a LiDAR's field of view. Boxes whose
-  /// ego-relative center falls outside the window are dropped before
-  /// publishing. The ego box is always kept. Defaults publish everything
-  /// (unbounded 360°).
+  // Detection window — mimics a LiDAR's field of view. Boxes whose
+  // ego-relative center falls outside the window are dropped before
+  // publishing. The ego box is always kept. Defaults publish everything
+  // (unbounded 360 degrees).
   struct RangeWindow {
     double max_range = 0.0;         // m, radial XY distance; <=0 = unlimited
     double min_range = 0.0;         // m, radial XY blind zone around ego
@@ -33,8 +33,8 @@ class CarlaGroundTruthBoxes {
 
   CarlaGroundTruthBoxes(const std::string& frame_id, const RangeWindow& window);
 
-  /// Scan all world actors (vehicles / cyclists / pedestrians / signs) and
-  /// return their boxes relative to the ego vehicle's base_link frame.
+  // Scan all world actors (vehicles / cyclists / pedestrians / signs) and
+  // return their boxes relative to the ego vehicle's base_link frame.
   GroundTruthBoxes get_boxes(carla::client::World& world,
                              carla::SharedPtr<carla::client::Actor> ego);
 

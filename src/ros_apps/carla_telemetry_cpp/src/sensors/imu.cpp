@@ -58,7 +58,7 @@ std::optional<ImuState> CarlaIMU::get_state() {
   double yaw = M_PI / 2.0 - static_cast<double>(data->GetCompass());
 
   tf2::Quaternion q;
-  q.setRPY(roll, pitch, yaw);  //+ 0.2098132
+  q.setRPY(roll, pitch, yaw);
 
   ImuState s;
   s.accel_x = clamp(static_cast<double>(accel.x));

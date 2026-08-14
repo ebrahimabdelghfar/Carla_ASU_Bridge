@@ -8,57 +8,29 @@
 
 namespace carla_telemetry {
 
-/**
- * @brief Lightweight pipeline performance instrumentation.
- * @details Enable via CARLA_PERF=1 env var. All calls become no-ops when
- * disabled.
- */
+// Lightweight pipeline performance instrumentation.
+// Enable via the CARLA_PERF=1 env var; all calls become no-ops when disabled.
 class PerfMonitor {
  public:
-  /**
-   * @brief Construct a new PerfMonitor object.
-   * @param enabled
-   * @param log_interval
-   * @param buffer_size
-   */
   explicit PerfMonitor(bool enabled = true, double log_interval = 10.0,
                        size_t buffer_size = 2000);
 
-  /**
-   * @brief Capture a start timestamp (always cheap).
-   *
-   * @return double The start timestamp
-   */
+  // Capture a start timestamp (always cheap).
   static double tick();
 
-  /**
-   * @brief Record elapsed time since `start` under metric `name`.
-   *
-   * @param name
-   * @param start
-   */
+  // Record elapsed time since `start` under metric `name`.
   void record(const std::string& name, double start);
 
-  /**
-   * @brief Record an arbitrary value (e.g. queue depth).
-   *
-   * @param name
-   * @param value
-   */
+  // Record an arbitrary value (e.g. queue depth).
   void record_value(const std::string& name, double value);
 
-  /**
-   * @brief Record the interval (ms) since the previous call under `name`.
-   * @details Measures the rate the CARLA server delivers data to the client
-   * (inter-arrival time; server Hz = 1000 / avg). First call primes only.
-   * @param name
-   */
+  // Record the interval (ms) since the previous call under `name`.
+  // Measures the rate the CARLA server delivers data to the client
+  // (inter-arrival time; server Hz = 1000 / avg). The first call only primes
+  // the timer.
   void record_interval(const std::string& name);
 
  private:
-  /**
-   * @brief Log the current metrics.
-   */
   void maybe_log();
 
   bool enabled_;
@@ -71,7 +43,7 @@ class PerfMonitor {
   double last_log_;
 };
 
-/// Module-level singleton — enabled via CARLA_PERF env var.
+// Module-level singleton — enabled via CARLA_PERF env var.
 extern PerfMonitor perf;
 
 }  // namespace carla_telemetry

@@ -22,8 +22,8 @@ namespace carla_telemetry {
 
 class CarlaROS2Backend;  // forward
 
-/// CARLA LiDAR sensor wrapper — supports rotary and solid-state.
-/// Direct port of CarlaLidar from lidar.py.
+// CARLA LiDAR sensor wrapper — supports rotary and solid-state.
+// Direct port of CarlaLidar from lidar.py.
 class CarlaLidar {
  public:
   struct Config {
@@ -57,21 +57,8 @@ class CarlaLidar {
   CarlaLidar(carla::client::World& world,
              carla::SharedPtr<carla::client::Actor> vehicle, const Config& cfg);
 
-  /**
-   * @brief Start the lidar sensor.
-   *
-   * @param backend The backend to use for publishing.
-   */
   void start(CarlaROS2Backend* backend);
-
-  /**
-   * @brief Stop the lidar sensor.
-   */
   void stop();
-
-  /**
-   * @brief Destroy the lidar sensor.
-   */
   void destroy();
 
   const std::string& name() const { return name_; }
@@ -80,25 +67,12 @@ class CarlaLidar {
   const std::string& topic_point_cloud() const { return topic_point_cloud_; }
 
  private:
-  /**
-   * @brief Callback for lidar data.
-   *
-   * @param data The lidar data.
-   */
   void on_lidar(carla::SharedPtr<carla::sensor::SensorData> data);
 
-  /**
-   * @brief Parse the lidar data into interleaved XYZI float32 (16B/point).
-   *
-   * @param data The lidar data.
-   * @param out The output buffer.
-   */
+  // Parse the lidar data into interleaved XYZI float32 (16 bytes/point).
   void parse_into(const carla::SharedPtr<carla::sensor::SensorData>& data,
                   std::vector<uint8_t>& out);
 
-  /**
-   * @brief Publish the lidar data.
-   */
   void publish_loop();
 
   std::string name_;

@@ -23,24 +23,12 @@ class CarlaDynamicProps {
     std::vector<std::string> blueprints;
   };
 
-  /**
-   * @brief Construct a new CarlaDynamicProps object.
-   *
-   * @param world      CARLA world reference (must outlive this object).
-   * @param cfg        Parsed dynamic props configuration.
-   * @param ego_loc    Location of the ego vehicle.
-   */
+  // world must outlive this object.
   CarlaDynamicProps(carla::client::World& world, const Config& cfg,
                     const carla::geom::Location& ego_loc);
 
-  /**
-   * @brief Destroy the CarlaDynamicProps object.
-   */
   ~CarlaDynamicProps();
 
-  /**
-   * @brief Destroy the dynamic props.
-   */
   void destroy();
 
  private:

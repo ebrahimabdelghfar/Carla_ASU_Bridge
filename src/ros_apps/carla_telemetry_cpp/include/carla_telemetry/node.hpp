@@ -27,17 +27,10 @@
 
 namespace carla_telemetry {
 
-/**
- * @brief Main ROS 2 node for CARLA telemetry.
- * Direct port of CarlaTelemetryNode from node.py.
- */
+// Main ROS 2 node for CARLA telemetry.
+// Direct port of CarlaTelemetryNode from node.py.
 class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
  public:
-  /**
-   * @brief Construct a new CarlaTelemetryNode object.
-   *
-   * @param options The node options
-   */
   CarlaTelemetryNode(
       const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   ~CarlaTelemetryNode() override;
@@ -45,122 +38,30 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
   using CallbackReturn =
       rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-  /**
-   * @brief Configure the node.
-   *
-   * @param state The node state
-   * @return CallbackReturn The callback return
-   */
   CallbackReturn on_configure(const rclcpp_lifecycle::State& state) override;
-  /**
-   * @brief Activate the node.
-   *
-   * @param state The node state
-   * @return CallbackReturn The callback return
-   */
   CallbackReturn on_activate(const rclcpp_lifecycle::State& state) override;
-  /**
-   * @brief Deactivate the node.
-   *
-   * @param state The node state
-   * @return CallbackReturn The callback return
-   */
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State& state) override;
-  /**
-   * @brief Clean up the node.
-   *
-   * @param state The node state
-   * @return CallbackReturn The callback return
-   */
   CallbackReturn on_cleanup(const rclcpp_lifecycle::State& state) override;
-  /**
-   * @brief Shutdown the node.
-   *
-   * @param state The node state
-   * @return CallbackReturn The callback return
-   */
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State& state) override;
 
  private:
-  /**
-   * @brief Load the configuration.
-   *
-   * @param path The path to the configuration
-   */
   void load_config(const std::string& path);
-  /**
-   * @brief Setup the vehicle.
-   */
   void setup_vehicle();
-  /**
-   * @brief Setup the pedestrians.
-   */
   void setup_pedestrians();
-  /**
-   * @brief Setup the npc vehicles.
-   */
   void setup_npc_vehicles();
-  /**
-   * @brief Setup the dynamic props.
-   */
   void setup_dynamic_props();
-  /**
-   * @brief Setup the sensors.
-   */
   void setup_sensors();
-  /**
-   * @brief Start the sensor threads.
-   */
   void start_sensor_threads();
-  /**
-   * @brief Stop the sensor threads.
-   */
   void stop_sensor_threads();
-  /**
-   * @brief Shutdown the node.
-   */
   void shutdown();
 
   // Sensor thread loops
-  /**
-   * @brief GPS loop.
-   *
-   * @param hz The update rate
-   */
   void gps_loop(double hz);
-  /**
-   * @brief Battery loop.
-   *
-   * @param hz The update rate
-   */
   void battery_loop(double hz);
-  /**
-   * @brief IMU loop.
-   *
-   * @param hz The update rate
-   */
   void imu_loop(double hz);
-  /**
-   * @brief Odometry loop.
-   *
-   * @param hz The update rate
-   */
   void odom_loop(double hz);
-  /**
-   * @brief Boxes loop.
-   */
   void boxes_loop();
-  /**
-   * @brief Telemetry loop.
-   *
-   * @param hz The update rate
-   */
   void telemetry_loop(double hz);
-  /**
-   * @brief Control loop.
-   *
-   * @param hz The update rate
-   */
   void control_loop(double hz);
 
   // YAML config (parsed once)
@@ -186,55 +87,41 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
       sim_manager_msgs::msg::ComponentHealth>>
       health_pub_;
 
-  /**
-   * @brief Dedicated callback group for backend subscriptions and services.
-   *
-   * This is created once in the constructor (before the node is added to the
-   * executor) and passed to every backend subscription and service.
-   *
-   * @note There are two critical architectural reasons for this lifecycle:
-   *
-   * 1. @b Deadlock @b prevention: Isolates blocking CARLA RPCs from the node's
-   *    default callback group. The rclcpp_lifecycle services (change_state,
-   *    get_state) execute in the default MutuallyExclusive group. If an RPC
-   *    blocks waiting on a non-ticking server (since the world does not tick
-   *    while inactive), a shared group would deadlock subsequent
-   *    `ros2 lifecycle set` calls.
-   *
-   * 2. @b Executor @b safety: Prevents callback group destruction while the
-   *    executor is spinning. Because the backend is rebuilt on every
-   *    configure transition, a per-backend group would be destroyed
-   *    dynamically, leaving a dangling raw guard-condition pointer in ROS 2
-   *    Humble [rclcpp].
-   */
+  // Dedicated callback group for backend subscriptions and services, created
+  // once in the constructor before the node is added to the executor.
+  //
+  // 1. Deadlock prevention: isolates blocking CARLA RPCs from the node's
+  //    default callback group. The rclcpp_lifecycle services (change_state,
+  //    get_state) execute in the default MutuallyExclusive group; if an RPC
+  //    blocks waiting on a non-ticking server (the world doesn't tick while
+  //    inactive), a shared group would deadlock subsequent
+  //    `ros2 lifecycle set` calls.
+  // 2. Executor safety: prevents callback group destruction while the
+  //    executor is spinning. The backend is rebuilt on every configure
+  //    transition, so a per-backend group would be destroyed dynamically,
+  //    leaving a dangling raw guard-condition pointer in ROS 2 Humble
+  //    rclcpp.
   rclcpp::CallbackGroup::SharedPtr entity_cb_group_;
 
   // Sensor threads (control_loop lives here too — see start_sensor_threads)
   std::vector<std::thread> sensor_threads_;
   std::atomic<bool> shutdown_{false};
 
-  /**
-   * @brief Synchronizes ground-truth bounding boxes with sensor data streams.
-   *
-   * Ground-truth boxes are frame-locked to the simulation tick via
-   * @c world.OnTick, mirroring the @c Listen mechanism used by camera and
-   * LiDAR sensors.
-   *
-   * @details The synchronization follows a two-stage pipeline:
-   *
-   * 1. @b Lightweight @b callback: The @c OnTick callback remains non-blocking.
-   *    It updates @c ServerRate, gates execution on the shared world frame via
-   *    @c sync_should_publish (applying identical decimation to the sensors),
-   *    and forwards the frame's simulation timestamp to @c boxes_loop.
-   *
-   * 2. @b Thread @b isolation: Blocking @c get_boxes RPCs execute
-   * asynchronously within @c boxes_loop rather than on the main tick thread,
-   * mirroring the architectural design of @c publish_loop.
-   *
-   * @note As a result, bounding boxes are emitted for the exact same world
-   * frames as the LiDAR data, sharing a byte-identical timestamp with zero
-   * temporal shift (0 ms).
-   */
+  // Synchronizes ground-truth bounding boxes with sensor data streams.
+  //
+  // Ground-truth boxes are frame-locked to the simulation tick via
+  // world.OnTick, mirroring the Listen mechanism used by camera and LiDAR
+  // sensors:
+  // 1. Lightweight callback: OnTick stays non-blocking. It updates
+  //    ServerRate, gates execution on the shared world frame via
+  //    sync_should_publish (the same decimation applied to the sensors), and
+  //    forwards the frame's simulation timestamp to boxes_loop.
+  // 2. Thread isolation: the blocking get_boxes RPC runs in boxes_loop rather
+  //    than on the main tick thread, mirroring publish_loop's design.
+  //
+  // As a result, bounding boxes are emitted for the exact same world frames
+  // as the LiDAR data, sharing a byte-identical timestamp with zero temporal
+  // shift.
   size_t boxes_ontick_id_ = 0;
   bool boxes_ontick_registered_ = false;
   std::mutex boxes_mutex_;

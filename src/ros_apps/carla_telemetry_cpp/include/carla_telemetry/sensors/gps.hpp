@@ -16,8 +16,8 @@
 
 namespace carla_telemetry {
 
-/// CARLA GNSS sensor wrapper with Gauss-Markov + white-noise model.
-/// Direct port of CarlaGPS from gps.py.
+// CARLA GNSS sensor wrapper with Gauss-Markov + white-noise model.
+// Direct port of CarlaGPS from gps.py.
 class CarlaGPS {
  public:
   struct Config {
@@ -41,68 +41,26 @@ class CarlaGPS {
            carla::SharedPtr<carla::client::Actor> vehicle, const Config& cfg,
            double origin_lat, double origin_lon, double origin_alt);
 
-  /**
-   * @brief Compute noisy GPS reading. Returns state or nullopt if no GNSS data
-   * yet.
-   *
-   * @param vx Velocity in x direction
-   * @param vy Velocity in y direction
-   * @param vz Velocity in z direction
-   * @param dt Time step
-   * @return std::optional<GpsState> The latest GPS state
-   */
+  // Compute a noisy GPS reading; returns nullopt if no GNSS data yet.
   std::optional<GpsState> update(double vx, double vy, double vz, double dt);
 
-  /**
-   * @brief Get the latest GPS state.
-   *
-   * @return const GpsState& The latest GPS state
-   */
   const GpsState& state() const { return state_; }
 
-  /**
-   * @brief Get the latest ground-truth GPS reading.
-   *
-   * @param lat Latitude
-   * @param lon Longitude
-   * @param alt Altitude
-   * @return true if successful
-   * @return false if failed
-   */
   bool get_latest_gt(double& lat, double& lon, double& alt);
 
-  /**
-   * @brief Get the latest East-North-Up (ENU) coordinates.
-   *
-   * @param east East coordinate
-   * @param north North coordinate
-   * @param up Up coordinate
-   * @param use_noise Whether to use noise
-   * @return true if successful
-   * @return false if failed
-   */
   bool get_latest_enu(double& east, double& north, double& up,
                       bool use_noise = true) const;
 
-  /**
-   * @brief Identity of the GNSS measurement the cached ENU vectors were built
-   * from: the world frame it was produced in and its sim timestamp.
-   *
-   * Consumers use this to tell a fresh fix from a re-read of the same one —
-   * the GNSS stream runs at its own rate, so polling faster than that serves
-   * the same bytes repeatedly. Freshness is keyed on the measurement's own
-   * identity, never on comparing the values.
-   *
-   * @param frame The world frame of the measurement behind the ENU cache
-   * @param sim_time The sim timestamp (seconds) of that measurement
-   * @return true if the cache holds a measurement
-   * @return false if no GNSS fix has been processed yet
-   */
+  // Identity of the GNSS measurement the cached ENU vectors were built from:
+  // the world frame it was produced in and its sim timestamp.
+  //
+  // Consumers use this to tell a fresh fix from a re-read of the same one —
+  // the GNSS stream runs at its own rate, so polling faster than that serves
+  // the same bytes repeatedly. Freshness is keyed on the measurement's own
+  // identity, never on comparing the values. Returns false if no GNSS fix has
+  // been processed yet.
   bool enu_source(uint64_t& frame, double& sim_time) const;
 
-  /**
-   * @brief Destroy the GPS sensor.
-   */
   void destroy();
 
  private:
