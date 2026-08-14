@@ -10,6 +10,11 @@ only remaining job is supplying `manual_control.py`, the pygame debugging
 window the bridge can spawn as a subprocess (`carla.open_manual_control`).
 Everything else described below — vehicle spawning, physics, sensors, control
 — lives in this package.
+## Download Carla Simulator
+
+```bash
+make download_carla_assets
+```
 
 ## Running
 
