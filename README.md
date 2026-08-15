@@ -49,3 +49,24 @@ ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node activate
 
 https://github.com/user-attachments/assets/8a7885ac-42ba-4e7f-9a16-554fe6fa74c3
 
+# How to Cite
+
+If you use this simulator in your research or project, please cite it:
+
+```bibtex
+@software{carla_asu_bridge,
+  author  = {Abdelghfar, Ebrahim},
+  title   = {Formula AI Simulator: A CARLA-based Simulation Bridge for
+             Autonomous Formula Student Vehicles},
+  year    = {2026},
+  url     = {https://github.com/ebrahimabdelghfar/Carla_ASU_Bridge},
+  license = {GPL-3.0}
+}
+```
+
+Plain text:
+
+> E. Abdelghfar, "Formula AI Simulator: A CARLA-based Simulation Bridge for
+> Autonomous Formula Student Vehicles," 2026. [Online]. Available:
+> https://github.com/ebrahimabdelghfar/Carla_ASU_Bridge
+
