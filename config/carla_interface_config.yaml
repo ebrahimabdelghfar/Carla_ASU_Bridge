@@ -37,9 +37,11 @@ world:
   # To spawn at specific coordinates:
   # skidpad location point
   # spawn_point_coords: { x: 528.8704833984375, y: 63.526912689208984, z: 0.938620126247406, roll: 0.0, pitch: 0.0, yaw: -40.743 }
+  # starting location point on first track
+  spawn_point_coords: { x: -384.3957214355469, y: 234.75315856933594, z: 6.395410633087158, roll: 0.0, pitch: 0.0, yaw: -57.332 }
   # Or use an index into world.get_map().get_spawn_points().
   # Use -1 for a random spawn point.
-  spawn_point_index: 0
+  # spawn_point_index: 0
 
 # Dynamic Pedestrians (need dynamic nav mesh))
 pedestrians:
