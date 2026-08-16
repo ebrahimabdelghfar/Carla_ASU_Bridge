@@ -1335,13 +1335,19 @@ void CarlaROS2Backend::apply_vehicle_control() {
     // CARLA's own Ackermann controller (Vehicle::ApplyAckermannControl) runs
     // the speed/acceleration PID loops server-side — gains are set once via
     // ApplyAckermannControllerSettings in set_control_config(). This
-    // replaces the client-side speed_pid_/steer_pid_ used previously. Steer
-    // and steer_speed are forwarded as-is: ROS ackermann_msgs and CARLA
-    // share the same steering convention (positive = left), confirmed by
-    // CARLA's own ROS2 AckermannControlSubscriber, which passes
-    // steering_angle straight through with no sign flip or scaling.
+    // replaces the client-side speed_pid_/steer_pid_ used previously.
+    //
+    // Steer sign: ROS ackermann_msgs is right-handed / REP-103 (positive =
+    // left); CARLA inherits Unreal's left-handed frame (positive = right) and
+    // its server-side Ackermann controller maps target steer to
+    // VehicleControl.Steer with no sign flip. So the command must be negated
+    // here - same convention as the vehicle_interface branch below, which
+    // already does -cmd_steering_deg_ / max_steer_deg_. CARLA's own
+    // AckermannControlSubscriber passing steering_angle through unchanged is
+    // not a counter-example: it feeds a CARLA-frame DDS message, not a
+    // REP-103 one.
     carla::rpc::VehicleAckermannControl ack_ctrl;
-    ack_ctrl.steer = static_cast<float>(ack_steering_angle_);
+    ack_ctrl.steer = static_cast<float>(-ack_steering_angle_);
     ack_ctrl.steer_speed = static_cast<float>(ack_steering_angle_vel_);
     ack_ctrl.speed = static_cast<float>(target_speed);
     ack_ctrl.acceleration = static_cast<float>(ack_acceleration_);
