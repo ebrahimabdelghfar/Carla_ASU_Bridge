@@ -86,7 +86,6 @@ dynamic_props:
     - "static.prop.constructioncone"
     - "static.prop.box*"
 
-
 # Ego Vehicle
 vehicle:
   # CARLA blueprint filter string (partial match allowed, e.g. "vehicle.*")
@@ -685,7 +684,7 @@ control:
   max_steer_deg: 16.0
   # Speed cap (km/h) — applies to both modes (ackermann_drive clamps the
   # commanded speed before handing it to CARLA's native controller).
-  max_velocity_kmh: 30.0
+  max_velocity_kmh: 40.0
 
   # Standstill hold (vehicle_interface only)
   # A P-only speed PID cannot hold a stop: with a zero setpoint and the vehicle
