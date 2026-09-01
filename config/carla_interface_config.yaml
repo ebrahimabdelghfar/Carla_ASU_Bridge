@@ -8,7 +8,7 @@ carla:
   # Set to false to run in asynchronous mode (world ticks on its own clock).
   synchronous_mode: true
   # Applied in BOTH sync and async. In async this is the "async fixed step":
-  fixed_delta_seconds: 0.033    # 30 Hz world physics step
+  fixed_delta_seconds: 0.033    # 50 Hz world physics step
 
   # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
   # Requires pygame and a display.
@@ -144,7 +144,8 @@ vehicle:
     # Centre of mass offset from actor origin (metres, CARLA frame)
     center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
 
-    max_rpm: 3000.0           # peak engine RPM
+    # Maximum engine RPM
+    max_rpm: 1500.00          # peak engine RPM
     moi: 0.01                  # engine moment of inertia (kg*m^2)
 
     damping_rate_full_throttle:                   0.15
@@ -153,15 +154,10 @@ vehicle:
     damping_rate_zero_throttle_clutch_engaged:    0.5
     damping_rate_zero_throttle_clutch_disengaged: 0.5
 
-    # Engine torque curve: [[RPM, Nm], ...]
-    # Peak is 900 N*m through final_ratio 1.0 into a 0.25 m wheel. Measured
-    # ceiling: above ~1000 the drivetrain cannot resolve a creep torque and
-    # stalls out any setpoint under 0.8 m/s; below ~600 it can no longer hold
-    # the 30 km/h max_velocity_kmh cap without saturating the throttle.
     torque_curve:
       - [0.0,   300.0]
       - [738.5, 900.0]
-      - [853.0, 300.0]
+      - [1500.0, 300.0]
 
     # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
     # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
@@ -171,22 +167,8 @@ vehicle:
       - [120.0, 1.0]
 
     # Enable PhysX sweep-based wheel collision (more realistic, slower)
-    use_sweep_wheel_collision: false
+    use_sweep_wheel_collision: true
 
-    # Per-wheel physics overrides.
-    # Wheel index convention: 0=FL, 1=FR, 2=RL, 3=RR.
-    # Set 'drive_mode' above to auto-apply FWD/RWD friction differentiation.
-    # damping_rate is 1.0 rather than the usual 0.25: together with the reduced
-    # torque_curve it is what lets the vehicle hold a sub-1 m/s setpoint instead
-    # of stick-slipping to a standstill.
-    # tire_friction is 1.5, not the CARLA-typical 3.5: the scrub of a steered
-    # wheel at creep speed otherwise drags the vehicle to a standstill. Measured
-    # at a 0.5 m/s hold on full lock, 4-8 runs each: 3.5 and 2.5 and 2.0 are all
-    # bimodal (roughly half the runs collapse to a stall), 1.5 held 8/8 runs
-    # within 0.9%. Keep all four wheels equal — a front/rear split scrubs less
-    # but stayed bimodal. 1.5 g of lateral force is still ~1.6x the worst case
-    # inside the max_velocity_kmh cap (full 16 deg lock at 8.3 m/s needs 0.95 g
-    # on the measured 7.43 m full-lock radius).
     wheels:
       - position: "FL"                 # front-left
         tire_friction: 1.5
@@ -340,7 +322,7 @@ odometry:
   # polls for a new sample (keep it >= the server rate), and it still decimates
   # on the source frame number, so a value below the server rate yields the
   # same frame subset the LiDAR/camera/boxes keep.
-  follow_server_rate: false
+  follow_server_rate: true
 
   # When true, also broadcast the odom→base_link TF transform via TF2.
   # Requires tf2_ros to be installed.  Set to false if your stack provides TF externally.
@@ -675,7 +657,7 @@ control:
 
   # RPM value that maps to full throttle (1.0) in CARLA.
   #   throttle = |velocity_rpm| / max_rpm    (clamped to [0, 1])
-  max_rpm: 3000.0
+  max_rpm: 1500.00
 
   # Max steering angle (degrees) that maps to full steer (±1.0) in CARLA.
   #   carla_steer = -steering_angle_deg / max_steer_deg   (+ left → − right)
@@ -684,7 +666,7 @@ control:
   max_steer_deg: 16.0
   # Speed cap (km/h) — applies to both modes (ackermann_drive clamps the
   # commanded speed before handing it to CARLA's native controller).
-  max_velocity_kmh: 40.0
+  max_velocity_kmh: 100.0
 
   # Standstill hold (vehicle_interface only)
   # A P-only speed PID cannot hold a stop: with a zero setpoint and the vehicle

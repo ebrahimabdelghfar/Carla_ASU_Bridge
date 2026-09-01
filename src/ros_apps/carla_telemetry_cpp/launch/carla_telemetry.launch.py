@@ -105,7 +105,8 @@ def generate_launch_description():
         executable="static_transform_publisher",
         name="static_map_to_odom",
         output="screen",
-        arguments=["0","0","0","0","0","0","map","odom"]
+        arguments=["0","0","0","0","0","0","map","odom"],
+        parameters=[{"use_sim_time": True}],
     )
 
     # Enable shared-memory transport so the large camera/LiDAR payloads move

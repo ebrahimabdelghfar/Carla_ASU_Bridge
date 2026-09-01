@@ -6,6 +6,7 @@
 #include <carla/rpc/VehicleTelemetryData.h>
 
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
@@ -290,6 +291,14 @@ class CarlaROS2Backend {
   bool physics_cached_ = false;
   carla::rpc::VehiclePhysicsControl cached_physics_;
 
+  // Last values written by apply_tire_friction/apply_drag_coefficient, kept so
+  // a repeated command is dropped instead of re-issued: ApplyPhysicsControl
+  // re-initialises the vehicle's wheel setup and zeroes wheel spin, so a
+  // publisher repeating the same value (ros2 topic pub defaults to 1 Hz) would
+  // stall the car once per message. NaN until the first write.
+  float applied_tire_friction_ = std::numeric_limits<float>::quiet_NaN();
+  float applied_drag_coefficient_ = std::numeric_limits<float>::quiet_NaN();
+
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
   std::mutex light_set_mutex_;
@@ -308,6 +317,13 @@ class CarlaROS2Backend {
   void apply_tire_friction(float friction);
 
   void apply_drag_coefficient(float drag);
+
+  // Write a physics control without the vehicle losing its motion: CARLA
+  // recreates the physics state on every ApplyPhysicsControl and that zeroes
+  // the rigid body's velocity, so the sampled linear and angular velocity are
+  // restored immediately after the write. Caller holds physics_mutex_.
+  void apply_physics_preserving_motion(
+      carla::client::Vehicle& v, const carla::rpc::VehiclePhysicsControl& pc);
   void ensure_light_init(carla::client::Vehicle& v);
   void set_light_bit(carla::client::Vehicle& v, uint32_t flag, bool on);
 

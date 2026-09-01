@@ -409,6 +409,25 @@ else:
                          drag_coeff=pars["veh_params"]["dragcoeff"],
                          m_veh=pars["veh_params"]["mass"])
 
+# shift the braking phases in front of the apexes (if requested)
+if pars["vel_calc_opts"]["apex_preview_dist"] > 0.0 or pars["vel_calc_opts"]["apex_preview_time"] > 0.0:
+    # the ggv is not imported in the mintime case, but the feasibility pass of the anticipation needs it
+    if ggv is None:
+        ggv = tph.import_veh_dyn_info.\
+            import_veh_dyn_info(ggv_import_path=file_paths["ggv_file"],
+                                ax_max_machines_import_path=file_paths["ax_max_machines_file"])[0]
+
+    vx_profile_opt = helper_funcs_glob.src.apply_apex_preview.\
+        apply_apex_preview(vx_profile=vx_profile_opt,
+                           el_lengths=el_lengths_opt_interp,
+                           kappa=kappa_opt,
+                           d_preview=pars["vel_calc_opts"]["apex_preview_dist"],
+                           t_preview=pars["vel_calc_opts"]["apex_preview_time"],
+                           ggv=ggv,
+                           drag_coeff=pars["veh_params"]["dragcoeff"],
+                           m_veh=pars["veh_params"]["mass"],
+                           dyn_model_exp=pars["vel_calc_opts"]["dyn_model_exp"])
+
 # calculate longitudinal acceleration profile
 vx_profile_opt_cl = np.append(vx_profile_opt, vx_profile_opt[0])
 ax_profile_opt = tph.calc_ax_profile.calc_ax_profile(vx_profile=vx_profile_opt_cl,
