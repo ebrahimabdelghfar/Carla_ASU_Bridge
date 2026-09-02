@@ -1,9 +1,12 @@
 #include "carla_telemetry/ros2_backend.hpp"
 
+#include <carla/client/World.h>
+#include <carla/client/WorldSnapshot.h>
 #include <carla/rpc/VehicleControl.h>
 #include <carla/rpc/VehicleLightState.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <nlohmann/json.hpp>
 
@@ -24,6 +27,13 @@ std::string get_or(const std::unordered_map<std::string, std::string>& m,
 // Below this delta a physics command is treated as a repeat of the value
 // already applied and skipped.
 constexpr float kFrictionEpsilon = 1e-4f;
+
+// Used only if the physics control reports no wheels; matches the configured
+// vehicle.physics.wheels[].radius.
+constexpr double kFallbackWheelRadius = 0.25;
+
+// Below this chassis speed the slip ratio's divisor makes it meaningless.
+constexpr double kMinSlipRatioSpeed = 0.5;
 
 // Convert wall-clock epoch seconds to ROS Time stamp.
 builtin_interfaces::msg::Time epoch_to_stamp(double t) {
@@ -830,10 +840,14 @@ void CarlaROS2Backend::publish_motors() {
 }
 
 void CarlaROS2Backend::publish_tire_forces(
-    const carla::rpc::VehicleTelemetryData& telem) {
+    const carla::rpc::VehicleTelemetryData& telem, double capture_epoch,
+    uint64_t capture_frame) {
   if (telem.wheels.size() < 4) return;
+  if (capture_frame != 0 && capture_frame == last_tire_frame_) return;
+  last_tire_frame_ = capture_frame;
 
-  // Straight passthrough of CARLA's own per-wheel telemetry. There used to be
+  // CARLA's own per-wheel telemetry, passed through except for the slip ratio
+  // (a kinematic identity in omega and radius, see below). There used to be
   // an analytic tire model here — a Magic Formula for lateral force and a
   // Liniger-style Frx for longitudinal — and both were measurably wrong
   // against the vehicle they described (2026-08-14, live): the Magic Formula
@@ -845,21 +859,52 @@ void CarlaROS2Backend::publish_tire_forces(
   // the topic incapable of disagreeing with the simulation and removes every
   // constant that had to be re-identified whenever the vehicle changed.
   sim_manager_msgs::msg::TireForces msg;
-  // Sim-clock domain, same as /odom, the IMU, the LiDAR and /clock. The node's
-  // system clock is a different timeline entirely (the server does not run at
-  // wall pace), so stamping with it drifts unboundedly and makes these forces
-  // impossible to align with the state they were sampled with.
-  msg.stamp = epoch_to_stamp(sim_now_epoch());
+  // The world frame the telemetry RPC was served on, converted through the
+  // shared sim clock: byte-identical to the /odom, IMU and LiDAR stamps of
+  // that frame. A wall-extrapolated sim_now_epoch() reading was measured
+  // 85-111 ms (up to 3 server frames) away from the frame it described, since
+  // the telemetry thread is paced in wall time and the extrapolation cannot
+  // know which frame the server answered from.
+  msg.stamp = epoch_to_stamp(capture_epoch);
   msg.wheel_names = {"FL", "FR", "RL", "RR"};
+
+  // Wheel radii for the slip ratio below, in metres. Served from the physics
+  // cache, so no RPC; the config value is centimetres.
+  std::array<double, 4> radius_m{kFallbackWheelRadius, kFallbackWheelRadius,
+                                 kFallbackWheelRadius, kFallbackWheelRadius};
+  if (auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(
+          vehicle_actor_)) {
+    const auto& phys = physics(*v);
+    for (size_t i = 0; i < 4 && i < phys.wheels.size(); ++i) {
+      radius_m[i] = phys.wheels[i].radius / 100.0;
+    }
+  }
+  const double chassis_speed = telem.speed;
 
   for (size_t i = 0; i < 4; ++i) {
     const auto& w = telem.wheels[i];
-    // CARLA's WheelTelemetryData.lat_slip is in DEGREES (confirmed live: in a
-    // 76 m-radius turn it reads ~0.18 deg median, matching the chassis
-    // sideslip computed from /odom to within the same order — as radians it
-    // would be 10 deg of slip for a gentle sweep). The message publishes rad.
+    // CARLA's WheelTelemetryData.lat_slip is in DEGREES, and its sign is the
+    // left-handed one, so negating it to reach the ROS body frame and then
+    // converting is the same as converting the raw value: alpha_ros =
+    // -alpha_carla = +lat_slip. Verified live in a steady 4 m/s / 0.20 rad
+    // turn against the slip angle rebuilt from the chassis state (body
+    // velocity + yaw rate at each hub, minus the real wheel steer angle):
+    // ratio -1.02 on both front wheels and -0.85 on both rear, i.e. equal
+    // magnitude in degrees, opposite sign. The message publishes rad.
     msg.slip_angle[i] = w.lat_slip * M_PI / 180.0;
-    msg.slip_ratio[i] = w.long_slip;
+    // Effective mu, already multiplied by the road surface: a constant 0.70 of
+    // the configured vehicle.physics.wheels[].tire_friction (1.05 against 1.5).
+    msg.tire_friction[i] = w.tire_friction;
+    msg.wheel_speed[i] = w.omega;
+    // Built from omega and the wheel radius rather than passed through from
+    // CARLA's long_slip, which contradicts the omega beside it: at a steady
+    // 2.33 m/s cruise long_slip read +0.177 on a wheel turning 8.99 rad/s,
+    // whose kinematic ratio is -0.034, and its per-wheel ordering does not
+    // follow omega either. Below the speed floor the ratio has no meaning.
+    msg.slip_ratio[i] =
+        chassis_speed > kMinSlipRatioSpeed
+            ? (w.omega * radius_m[i] - chassis_speed) / chassis_speed
+            : 0.0;
     msg.normal_load[i] = w.tire_load;
     // Negated: CARLA's lat_force points the opposite way to the ROS body y
     // axis (CARLA is left-handed, +y right; ROS is right-handed, +y left) —
@@ -869,23 +914,20 @@ void CarlaROS2Backend::publish_tire_forces(
     // agrees in sign with the chassis sideslip derived from /odom
     // (corr +0.71) and with m*ay (corr +0.92).
     msg.lateral_force[i] = -w.lat_force;
-    // No flip needed (x is forward in both frames), but note what this field
-    // actually is: CARLA reports long_force as exactly -torque/radius (identity
-    // verified to 1e-4 N over 500 samples), i.e. drivetrain torque at the axle
-    // expressed as a force, not the contact-patch force. The two agree only
-    // while the tire rolls without slipping. Measured on this vehicle: ~43% of
-    // cruise samples have the wheel surface running >20% faster than the
-    // ground, sustained over 25+ consecutive frames on all four wheels, and in
-    // those windows sum(long_force) hits +/-6600 N against an m*ax under 500 N.
-    // normalized_long_force is no better — it is unsigned and reconstructs to
-    // the same magnitude. Reading the telemetry tick-aligned
-    // (world.wait_for_tick() then GetTelemetryData()) does not change any of
-    // this, so it is not a client sampling artifact: the vehicle really is
-    // spinning its wheels, which points at vehicle.physics (moi 0.01,
-    // damping_rate_zero_throttle_* 0.0, 3000 N*m torque curve through
-    // final_ratio 1.0 into a 0.25 m wheel = 12000 N available against an
-    // 8240 N traction limit). Published raw and documented in TireForces.msg
-    // rather than filtered, so consumers see what the simulator computed.
+    // Published unmodified, and it is not the force the chassis receives in
+    // either sign: corr(sum, m*ax) = +0.04 over 750 samples. It behaves as a
+    // friction-capacity report — over 8268 wheel samples |long_force| sits
+    // above 0.80*mu*Fz half the time and exactly at mu*Fz 15% of the time, and
+    // cutting the engine's peak torque from 900 to 100 N*m (the car could then
+    // no longer pass 0.87 m/s) left it pinned at 100% of the limit, so no
+    // driveline or torque-curve change repairs it. At a steady cruise it reads
+    // a saturated 703.4 N = 1.05 * 669.9 while the same wheel's lateral force
+    // is 3.7 N, i.e. it is not coupled to the friction ellipse it appears to
+    // saturate. A bridge-side model was tried and deleted (it was 7x off), so
+    // consumers get the simulator's own number with the caveat stated in
+    // TireForces.msg. long_force is exactly -torque/radius (identity to 1e-4 N
+    // over 500 samples) and normalized_long_force is the same value over the
+    // wheel's rest load, so neither is an independent reading.
     msg.longitudinal_force[i] = w.long_force;
     msg.wheel_torque[i] = w.torque;
   }
@@ -1143,6 +1185,15 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   t_rpc = PerfMonitor::tick();
   auto telem = v->GetTelemetryData();  // 1 RPC
   perf.record("rpc.GetTelemetryData", t_rpc);
+  // Frame the telemetry was served on. Read immediately AFTER the RPC returns,
+  // never before: measured against a tick-aligned reference over 32 matched
+  // samples, the snapshot taken after the call names the exact frame the data
+  // came from every time, while the one taken before is a frame early in half
+  // of them. GetSnapshot() is a local episode-state read, not an RPC.
+  auto telem_snapshot = v->GetWorld().GetSnapshot();
+  uint64_t telem_frame = static_cast<uint64_t>(telem_snapshot.GetFrame());
+  double telem_epoch =
+      sensor_sim_to_epoch(telem_snapshot.GetTimestamp().elapsed_seconds);
   const auto& phys = physics(*v);  // cached, no RPC
   ensure_light_init(*v);           // 1 RPC once, then cached
   uint32_t ls = light_state_;
@@ -1210,7 +1261,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   }
   {
     sensor_msgs::msg::JointState js;
-    js.header.stamp = epoch_to_stamp(sim_now_epoch());  // sim clock, see above
+    js.header.stamp = epoch_to_stamp(telem_epoch);  // frame-exact, see above
     js.name = {"wheel_FL", "wheel_FR", "wheel_RL", "wheel_RR"};
     js.position = {sFL, sFR, sRL, sRR};
     js.velocity = {0, 0, 0, 0};
@@ -1240,7 +1291,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
                             {"brake_motor_error", "OK"}};
     };
     nlohmann::json j = {
-        {"timestamp", sim_now_epoch() * 1000.0},
+        {"timestamp", telem_epoch * 1000.0},
         {"frame_id", "Motors_Data"},
         {"front_left", wheel(telem.wheels[0], rFL, rawFL, telemetry_brake)},
         {"front_right", wheel(telem.wheels[1], rFR, rawFR, telemetry_brake)},
@@ -1252,7 +1303,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   }
 
   // Per-wheel tire state + forces (CARLA telemetry passthrough)
-  publish_tire_forces(telem);
+  publish_tire_forces(telem, telem_epoch, telem_frame);
 
   // Vehicle-state JSON (cached light bitmask)
   {
@@ -1281,7 +1332,7 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
       }
     };
     nlohmann::json j = {
-        {"timestamp", sim_now_epoch() * 1000.0},
+        {"timestamp", telem_epoch * 1000.0},
         {"frame_id", "Vehicle_State"},
         {"lights",
          {{"position", has(LS::Position)},
@@ -1413,7 +1464,7 @@ void CarlaROS2Backend::apply_vehicle_control() {
                            velocity.y * forward_vec.y +
                            velocity.z * forward_vec.z;
 
-    double wheel_radius = 0.28;  // Default matching config's radius=28cm
+    double wheel_radius = kFallbackWheelRadius;
     const auto& physics = this->physics(*v);  // cached — no per-tick RPC
     if (!physics.wheels.empty()) {
       wheel_radius = physics.wheels[0].radius / 100.0;

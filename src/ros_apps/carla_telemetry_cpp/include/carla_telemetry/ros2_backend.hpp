@@ -166,9 +166,15 @@ class CarlaROS2Backend {
       double steer_deg = std::numeric_limits<double>::quiet_NaN());
   void publish_motors();
 
-  // Publish CARLA's own per-wheel slip, load, forces and torque from an
-  // already-fetched telemetry snapshot. No CARLA RPCs, no analytic model.
-  void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem);
+  // Publish CARLA's own per-wheel friction, speed, slip, load, forces and
+  // torque from an already-fetched telemetry snapshot. No CARLA RPCs (the
+  // wheel radii come from the physics cache), no analytic model — the only
+  // derived field is the slip ratio, a kinematic identity in omega and radius.
+  // capture_epoch/capture_frame identify the world frame the telemetry was
+  // sampled on, so the stamp lands on the same sim instant as the odometry,
+  // IMU and LiDAR of that frame.
+  void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem,
+                           double capture_epoch, uint64_t capture_frame);
 
   void publish_vehicle_state();
   void publish_autonomous_mode();
@@ -359,6 +365,10 @@ class CarlaROS2Backend {
       motors_pub_;
   rclcpp_lifecycle::LifecyclePublisher<
       sim_manager_msgs::msg::TireForces>::SharedPtr tire_forces_pub_;
+  // World frame of the last published tire-force message: the telemetry thread
+  // is paced in wall time, so a stalled server would otherwise re-publish one
+  // frame under several stamps.
+  uint64_t last_tire_frame_ = 0;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       vehicle_state_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr

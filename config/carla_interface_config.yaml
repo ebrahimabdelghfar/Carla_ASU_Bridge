@@ -140,9 +140,13 @@ vehicle:
     drag_coefficient: 0.426     # aerodynamic Cd
 
     # Whether to override the blueprint's default center of mass
-    override_center_of_mass: false
-    # Centre of mass offset from actor origin (metres, CARLA frame)
-    center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
+    override_center_of_mass: true
+    # Centre of mass offset from actor origin (metres, CARLA frame).
+    # The blueprint leaves this at the actor origin, i.e. CG at ground level,
+    # which flattens load transfer to ~15% of the rigid-body value (measured
+    # 18 N per m/s^2 of a_y against the 119 N a 0.30 m CG gives on this
+    # 1.19 m track). 0.30 m is the CG height of an FS car with the driver in.
+    center_of_mass: { x: 0.0, y: 0.0, z: 0.30 }
 
     # Maximum engine RPM
     max_rpm: 1500.00          # peak engine RPM
