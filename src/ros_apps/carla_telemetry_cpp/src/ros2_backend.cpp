@@ -872,8 +872,8 @@ void CarlaROS2Backend::publish_tire_forces(
   // cache, so no RPC; the config value is centimetres.
   std::array<double, 4> radius_m{kFallbackWheelRadius, kFallbackWheelRadius,
                                  kFallbackWheelRadius, kFallbackWheelRadius};
-  if (auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(
-          vehicle_actor_)) {
+  if (auto v =
+          boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_)) {
     const auto& phys = physics(*v);
     for (size_t i = 0; i < 4 && i < phys.wheels.size(); ++i) {
       radius_m[i] = phys.wheels[i].radius / 100.0;
