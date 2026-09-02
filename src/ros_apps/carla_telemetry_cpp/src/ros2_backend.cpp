@@ -32,8 +32,11 @@ constexpr float kFrictionEpsilon = 1e-4f;
 // vehicle.physics.wheels[].radius.
 constexpr double kFallbackWheelRadius = 0.25;
 
-// Below this chassis speed the slip ratio's divisor makes it meaningless.
-constexpr double kMinSlipRatioSpeed = 0.5;
+// Below this chassis speed no in-plane tire reading is trustworthy: PhysX puts
+// the vehicle to sleep and the wheel telemetry then repeats byte-identically
+// for as long as the car sits, and lat_slip is an atan2 of two vanishing
+// velocities, so the frame where motion stops carries a spike.
+constexpr double kStandstillSpeed = 0.01;  // m/s
 
 // Convert wall-clock epoch seconds to ROS Time stamp.
 builtin_interfaces::msg::Time epoch_to_stamp(double t) {
@@ -880,6 +883,17 @@ void CarlaROS2Backend::publish_tire_forces(
     }
   }
   const double chassis_speed = telem.speed;
+  // A parked car reports a frozen in-plane state: PhysX sleeps the rigid body
+  // and GetTelemetryData then returns the same lat_slip / lat_force /
+  // long_force byte for byte on every frame afterwards (measured -4.4 / -6.6 /
+  // -5.1 / -4.8 N held unchanged over 4 s of standstill), so the topic looks
+  // live while nothing behind it updates. The frame where motion stops is
+  // worse: lat_slip is an atan2 of two vanishing velocities, and at 0.01 m/s
+  // it read -2.0 to +2.6 deg with +/-334 N of lateral force on wheels whose
+  // omega was already 0. Both are published as zero instead. normal_load,
+  // tire_friction and wheel_speed stay live — a parked car really does carry
+  // its weight, mu is a property of the contact, and omega is honestly 0.
+  const bool standstill = chassis_speed <= kStandstillSpeed;
 
   for (size_t i = 0; i < 4; ++i) {
     const auto& w = telem.wheels[i];
@@ -891,7 +905,7 @@ void CarlaROS2Backend::publish_tire_forces(
     // velocity + yaw rate at each hub, minus the real wheel steer angle):
     // ratio -1.02 on both front wheels and -0.85 on both rear, i.e. equal
     // magnitude in degrees, opposite sign. The message publishes rad.
-    msg.slip_angle[i] = w.lat_slip * M_PI / 180.0;
+    msg.slip_angle[i] = standstill ? 0.0 : w.lat_slip * M_PI / 180.0;
     // Effective mu, already multiplied by the road surface: a constant 0.70 of
     // the configured vehicle.physics.wheels[].tire_friction (1.05 against 1.5).
     msg.tire_friction[i] = w.tire_friction;
@@ -900,11 +914,10 @@ void CarlaROS2Backend::publish_tire_forces(
     // CARLA's long_slip, which contradicts the omega beside it: at a steady
     // 2.33 m/s cruise long_slip read +0.177 on a wheel turning 8.99 rad/s,
     // whose kinematic ratio is -0.034, and its per-wheel ordering does not
-    // follow omega either. Below the speed floor the ratio has no meaning.
+    // follow omega either.
     msg.slip_ratio[i] =
-        chassis_speed > kMinSlipRatioSpeed
-            ? (w.omega * radius_m[i] - chassis_speed) / chassis_speed
-            : 0.0;
+        standstill ? 0.0
+                   : (w.omega * radius_m[i] - chassis_speed) / chassis_speed;
     msg.normal_load[i] = w.tire_load;
     // Negated: CARLA's lat_force points the opposite way to the ROS body y
     // axis (CARLA is left-handed, +y right; ROS is right-handed, +y left) —
@@ -913,7 +926,7 @@ void CarlaROS2Backend::publish_tire_forces(
     // m*ay) = +0.93 with slope 0.86. lat_slip needs no flip, it already
     // agrees in sign with the chassis sideslip derived from /odom
     // (corr +0.71) and with m*ay (corr +0.92).
-    msg.lateral_force[i] = -w.lat_force;
+    msg.lateral_force[i] = standstill ? 0.0 : -w.lat_force;
     // Published unmodified, and it is not the force the chassis receives in
     // either sign: corr(sum, m*ax) = +0.04 over 750 samples. It behaves as a
     // friction-capacity report — over 8268 wheel samples |long_force| sits
@@ -928,8 +941,8 @@ void CarlaROS2Backend::publish_tire_forces(
     // TireForces.msg. long_force is exactly -torque/radius (identity to 1e-4 N
     // over 500 samples) and normalized_long_force is the same value over the
     // wheel's rest load, so neither is an independent reading.
-    msg.longitudinal_force[i] = w.long_force;
-    msg.wheel_torque[i] = w.torque;
+    msg.longitudinal_force[i] = standstill ? 0.0 : w.long_force;
+    msg.wheel_torque[i] = standstill ? 0.0 : w.torque;
   }
 
   tire_forces_pub_->publish(msg);
