@@ -176,6 +176,17 @@ class CarlaROS2Backend {
   void publish_tire_forces(const carla::rpc::VehicleTelemetryData& telem,
                            double capture_epoch, uint64_t capture_frame);
 
+  // Publish the vehicle's own physics parameters (mass, and per wheel
+  // tire_friction, lat/long stiffness, radius, steer limit) as JSON on a
+  // latched topic, so a consumer can rebuild CARLA's tire model instead of
+  // hardcoding numbers that go stale whenever the config, the blueprint or a
+  // runtime /sim/control/tire_friction command changes them. Serves the
+  // physics cache, so no RPC, and publishes only when the JSON changes.
+  // Takes the telemetry snapshot because the friction that matters is the
+  // EFFECTIVE one PhysX is using (configured x the road surface's own
+  // coefficient), which only the telemetry reports.
+  void publish_vehicle_physics(const carla::rpc::VehicleTelemetryData& telem);
+
   void publish_vehicle_state();
   void publish_autonomous_mode();
   void publish_clock();
@@ -369,6 +380,11 @@ class CarlaROS2Backend {
   // is paced in wall time, so a stalled server would otherwise re-publish one
   // frame under several stamps.
   uint64_t last_tire_frame_ = 0;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
+      vehicle_physics_pub_;
+  // Last vehicle-physics JSON published, so the latched topic only carries a
+  // new message when a parameter actually changed.
+  std::string last_vehicle_physics_json_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr
       vehicle_state_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr

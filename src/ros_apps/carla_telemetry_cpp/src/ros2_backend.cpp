@@ -110,6 +110,13 @@ CarlaROS2Backend::CarlaROS2Backend(
       topic(
           get_or(topics_cfg_, "feedback_tire_forces", "feedback/tire_forces")),
       qos_rel);
+  // Latched: the physics parameters change rarely (config at spawn, or a
+  // runtime friction/drag command), so a late subscriber must still receive
+  // the current set rather than wait for the next change.
+  vehicle_physics_pub_ = node_->create_publisher<std_msgs::msg::String>(
+      topic(get_or(topics_cfg_, "feedback_vehicle_physics",
+                   "feedback/vehicle_physics")),
+      rclcpp::QoS(1).reliable().transient_local());
   vehicle_state_pub_ = node_->create_publisher<std_msgs::msg::String>(
       topic(get_or(topics_cfg_, "feedback_vehicle_state",
                    "feedback/vehicle_state")),
@@ -848,26 +855,7 @@ void CarlaROS2Backend::publish_tire_forces(
   if (telem.wheels.size() < 4) return;
   if (capture_frame != 0 && capture_frame == last_tire_frame_) return;
   last_tire_frame_ = capture_frame;
-
-  // CARLA's own per-wheel telemetry, passed through except for the slip ratio
-  // (a kinematic identity in omega and radius, see below). There used to be
-  // an analytic tire model here — a Magic Formula for lateral force and a
-  // Liniger-style Frx for longitudinal — and both were measurably wrong
-  // against the vehicle they described (2026-08-14, live): the Magic Formula
-  // published 7.0-7.5x the lateral force the chassis actually felt (fitted
-  // B*C = 2.69 vs the configured 19.0 over two clean cornering runs, R2 =
-  // 0.89), and the drive-force constant implied 133 m/s2 at full throttle on a
-  // 240 kg car, 4.6x past its own mu*m*g traction limit. CARLA computes these
-  // forces itself as part of the physics step, so reporting its numbers makes
-  // the topic incapable of disagreeing with the simulation and removes every
-  // constant that had to be re-identified whenever the vehicle changed.
   sim_manager_msgs::msg::TireForces msg;
-  // The world frame the telemetry RPC was served on, converted through the
-  // shared sim clock: byte-identical to the /odom, IMU and LiDAR stamps of
-  // that frame. A wall-extrapolated sim_now_epoch() reading was measured
-  // 85-111 ms (up to 3 server frames) away from the frame it described, since
-  // the telemetry thread is paced in wall time and the extrapolation cannot
-  // know which frame the server answered from.
   msg.stamp = epoch_to_stamp(capture_epoch);
   msg.wheel_names = {"FL", "FR", "RL", "RR"};
 
@@ -883,16 +871,6 @@ void CarlaROS2Backend::publish_tire_forces(
     }
   }
   const double chassis_speed = telem.speed;
-  // A parked car reports a frozen in-plane state: PhysX sleeps the rigid body
-  // and GetTelemetryData then returns the same lat_slip / lat_force /
-  // long_force byte for byte on every frame afterwards (measured -4.4 / -6.6 /
-  // -5.1 / -4.8 N held unchanged over 4 s of standstill), so the topic looks
-  // live while nothing behind it updates. The frame where motion stops is
-  // worse: lat_slip is an atan2 of two vanishing velocities, and at 0.01 m/s
-  // it read -2.0 to +2.6 deg with +/-334 N of lateral force on wheels whose
-  // omega was already 0. Both are published as zero instead. normal_load,
-  // tire_friction and wheel_speed stay live — a parked car really does carry
-  // its weight, mu is a property of the contact, and omega is honestly 0.
   const bool standstill = chassis_speed <= kStandstillSpeed;
 
   for (size_t i = 0; i < 4; ++i) {
@@ -900,52 +878,105 @@ void CarlaROS2Backend::publish_tire_forces(
     // CARLA's WheelTelemetryData.lat_slip is in DEGREES, and its sign is the
     // left-handed one, so negating it to reach the ROS body frame and then
     // converting is the same as converting the raw value: alpha_ros =
-    // -alpha_carla = +lat_slip. Verified live in a steady 4 m/s / 0.20 rad
+    // -alpha_carla = +lat_slip.
     // turn against the slip angle rebuilt from the chassis state (body
     // velocity + yaw rate at each hub, minus the real wheel steer angle):
     // ratio -1.02 on both front wheels and -0.85 on both rear, i.e. equal
     // magnitude in degrees, opposite sign. The message publishes rad.
     msg.slip_angle[i] = standstill ? 0.0 : w.lat_slip * M_PI / 180.0;
-    // Effective mu, already multiplied by the road surface: a constant 0.70 of
-    // the configured vehicle.physics.wheels[].tire_friction (1.05 against 1.5).
     msg.tire_friction[i] = w.tire_friction;
     msg.wheel_speed[i] = w.omega;
-    // Built from omega and the wheel radius rather than passed through from
-    // CARLA's long_slip, which contradicts the omega beside it: at a steady
-    // 2.33 m/s cruise long_slip read +0.177 on a wheel turning 8.99 rad/s,
-    // whose kinematic ratio is -0.034, and its per-wheel ordering does not
-    // follow omega either.
     msg.slip_ratio[i] =
         standstill ? 0.0
                    : (w.omega * radius_m[i] - chassis_speed) / chassis_speed;
     msg.normal_load[i] = w.tire_load;
-    // Negated: CARLA's lat_force points the opposite way to the ROS body y
-    // axis (CARLA is left-handed, +y right; ROS is right-handed, +y left) —
-    // the same flip the per-wheel steer angles get below. Measured live over
-    // two cornering runs: corr(+lat_force, m*ay) = -0.93, corr(-lat_force,
-    // m*ay) = +0.93 with slope 0.86. lat_slip needs no flip, it already
-    // agrees in sign with the chassis sideslip derived from /odom
-    // (corr +0.71) and with m*ay (corr +0.92).
     msg.lateral_force[i] = standstill ? 0.0 : -w.lat_force;
-    // Published unmodified, and it is not the force the chassis receives in
-    // either sign: corr(sum, m*ax) = +0.04 over 750 samples. It behaves as a
-    // friction-capacity report — over 8268 wheel samples |long_force| sits
-    // above 0.80*mu*Fz half the time and exactly at mu*Fz 15% of the time, and
-    // cutting the engine's peak torque from 900 to 100 N*m (the car could then
-    // no longer pass 0.87 m/s) left it pinned at 100% of the limit, so no
-    // driveline or torque-curve change repairs it. At a steady cruise it reads
-    // a saturated 703.4 N = 1.05 * 669.9 while the same wheel's lateral force
-    // is 3.7 N, i.e. it is not coupled to the friction ellipse it appears to
-    // saturate. A bridge-side model was tried and deleted (it was 7x off), so
-    // consumers get the simulator's own number with the caveat stated in
-    // TireForces.msg. long_force is exactly -torque/radius (identity to 1e-4 N
-    // over 500 samples) and normalized_long_force is the same value over the
-    // wheel's rest load, so neither is an independent reading.
     msg.longitudinal_force[i] = standstill ? 0.0 : w.long_force;
     msg.wheel_torque[i] = standstill ? 0.0 : w.torque;
   }
 
   tire_forces_pub_->publish(msg);
+}
+
+void CarlaROS2Backend::publish_vehicle_physics(
+    const carla::rpc::VehicleTelemetryData& telem) {
+  if (!vehicle_physics_pub_) return;
+  auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+  if (!v) return;
+  const auto& phys = physics(*v);  // cached, no RPC
+  if (phys.wheels.size() < 4 || telem.wheels.size() < 4) return;
+
+  // Same order as every array in sim_manager_msgs/TireForces.
+  const std::array<std::string, 4> wheel_names{"FL", "FR", "RL", "RR"};
+  nlohmann::json wheels = nlohmann::json::array();
+  double configured_sum = 0.0;
+  double effective_sum = 0.0;
+  for (size_t i = 0; i < 4; ++i) {
+    const auto& w = phys.wheels[i];
+    // tire_friction is the EFFECTIVE coefficient the physics step is using -
+    // the telemetry's own value, which is the configured
+    // WheelPhysicsControl.tire_friction multiplied by the road surface's
+    // coefficient (a measured 0.70 on this map: 1.05 against 1.5 configured).
+    // A consumer computing mu*Fz must use this one, so it is the field that
+    // carries the plain name; the configured value is published beside it.
+    const double effective = telem.wheels[i].tire_friction;
+    configured_sum += w.tire_friction;
+    effective_sum += effective;
+    // lat_stiff_value / lat_stiff_max_load are PhysX's mLatStiffY / mLatStiffX:
+    // the lateral stiffness per unit rest load, and the normalised load above
+    // which that stiffness stops growing. Together with tire_friction they are
+    // the whole lateral tire curve PhysX integrates.
+    wheels.push_back(
+        nlohmann::json{{"name", wheel_names[i]},
+                       {"tire_friction", effective},
+                       {"tire_friction_configured", w.tire_friction},
+                       {"lat_stiff_max_load", w.lat_stiff_max_load},
+                       {"lat_stiff_value", w.lat_stiff_value},
+                       {"long_stiff_value", w.long_stiff_value},
+                       {"damping_rate", w.damping_rate},
+                       {"radius_m", w.radius / 100.0f},
+                       {"max_steer_angle_deg", w.max_steer_angle},
+                       {"max_brake_torque", w.max_brake_torque}});
+  }
+
+  // Measured rather than assumed, so it stays right on a map or road surface
+  // whose factor is not 0.70. Non-driven wheels sit at the low FWD/RWD
+  // emulation friction, but the same factor applies to them, so the ratio of
+  // the sums is still the surface's.
+  nlohmann::json road_factor = nullptr;
+  if (configured_sum > 0.0) {
+    road_factor = effective_sum / configured_sum;
+  }
+
+  nlohmann::json j = {{"timestamp", sim_now_epoch() * 1000.0},
+                      {"frame_id", "Vehicle_Physics"},
+                      {"mass", phys.mass},
+                      {"drag_coefficient", phys.drag_coefficient},
+                      {"road_friction_factor", road_factor},
+                      {"center_of_mass",
+                       {{"x", phys.center_of_mass.x},
+                        {"y", phys.center_of_mass.y},
+                        {"z", phys.center_of_mass.z}}},
+                      {"wheel_names", wheel_names},
+                      {"wheels", wheels}};
+
+  // The timestamp moves every frame, so compare the parameters only.
+  nlohmann::json params = j;
+  params.erase("timestamp");
+  const std::string params_dump = params.dump();
+  if (params_dump == last_vehicle_physics_json_) return;
+  last_vehicle_physics_json_ = params_dump;
+
+  std_msgs::msg::String msg;
+  msg.data = j.dump();
+  vehicle_physics_pub_->publish(msg);
+  RCLCPP_INFO(node_->get_logger(),
+              "[CarlaROS2Backend] vehicle physics: mass=%.1f kg, per-wheel "
+              "tire_friction=%.3f (configured %.3f), lat_stiff_value=%.2f, "
+              "lat_stiff_max_load=%.2f",
+              phys.mass, telem.wheels[0].tire_friction,
+              phys.wheels[0].tire_friction, phys.wheels[0].lat_stiff_value,
+              phys.wheels[0].lat_stiff_max_load);
 }
 
 // Publish Vehicle State (lights / blinkers / steering)
@@ -1318,6 +1349,11 @@ void CarlaROS2Backend::publish_vehicle_feedback() {
   // Per-wheel tire state + forces (CARLA telemetry passthrough)
   publish_tire_forces(telem, telem_epoch, telem_frame);
 
+  // The physics parameters behind those forces. Latched and
+  // change-gated, so this is a JSON compare per frame and a message
+  // only when something actually changed.
+  publish_vehicle_physics(telem);
+
   // Vehicle-state JSON (cached light bitmask)
   {
     using LS = carla::rpc::VehicleLightState::LightState;
@@ -1578,6 +1614,7 @@ void CarlaROS2Backend::activate_publishers() {
   if (steer_angles_pub_) steer_angles_pub_->on_activate();
   if (motors_pub_) motors_pub_->on_activate();
   if (tire_forces_pub_) tire_forces_pub_->on_activate();
+  if (vehicle_physics_pub_) vehicle_physics_pub_->on_activate();
   if (vehicle_state_pub_) vehicle_state_pub_->on_activate();
   if (autonomous_mode_pub_) autonomous_mode_pub_->on_activate();
   if (clock_pub_) clock_pub_->on_activate();
@@ -1602,6 +1639,7 @@ void CarlaROS2Backend::deactivate_publishers() {
   if (steer_angles_pub_) steer_angles_pub_->on_deactivate();
   if (motors_pub_) motors_pub_->on_deactivate();
   if (tire_forces_pub_) tire_forces_pub_->on_deactivate();
+  if (vehicle_physics_pub_) vehicle_physics_pub_->on_deactivate();
   if (vehicle_state_pub_) vehicle_state_pub_->on_deactivate();
   if (autonomous_mode_pub_) autonomous_mode_pub_->on_deactivate();
   if (clock_pub_) clock_pub_->on_deactivate();

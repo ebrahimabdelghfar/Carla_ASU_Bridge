@@ -149,7 +149,7 @@ vehicle:
     center_of_mass: { x: 0.0, y: 0.0, z: 0.0 }
 
     # Maximum engine RPM
-    max_rpm: 1500.00          # peak engine RPM
+    max_rpm: 1700.00          # peak engine RPM
     moi: 0.01                  # engine moment of inertia (kg*m^2)
 
     damping_rate_full_throttle:                   0.15
@@ -161,7 +161,7 @@ vehicle:
     torque_curve:
       - [0.0,   300.0]
       - [738.5, 900.0]
-      - [1500.0, 300.0]
+      - [1700.0, 300.0]
 
     # Steering limit curve: [[speed_kmh, max_steer_fraction], ...]
     # At 0 km/h → full steering (1.0); at 120 km/h → 30 % of max.
@@ -586,7 +586,7 @@ lidars:
 # control loop and the ROS executor) at the rate below. Lower it if the CARLA
 # server RPC thread is saturated (symptom: high node.timer / laggy control).
 telemetry:
-  update_rate: 10.0
+  update_rate: 50.0
   qos_reliability: "BEST_EFFORT"
 
 # Ground-Truth Bounding Boxes
@@ -624,17 +624,6 @@ ground_truth_boxes:
 control:
   # Control source mode: "vehicle_interface" or "ackermann_drive"
   source: "ackermann_drive"
-
-  # ackermann_drive is driven by CARLA's own native Ackermann controller
-  # (Vehicle::ApplyAckermannControl / ApplyAckermannControllerSettings) —
-  # these gains tune its server-side speed and acceleration PID loops.
-  # steer/steer_speed are commanded open-loop (CARLA's own controller tracks
-  # them internally); there is no client-side steer PID to tune.
-  # Both cascaded loops are rate-form: the PID output is integrated into the
-  # target acceleration / pedal rather than used directly, so kd acts as the
-  # proportional term and kp as the integral one. Overshoot is set by the
-  # speed_kd/speed_kp ratio (~1.6 is critically damped here); accel_kd above
-  # ~0.01 differentiates acceleration noise into pedal chatter.
   ackermann_controller:
     speed_kp: 0.25
     speed_ki: 0.0
@@ -661,7 +650,7 @@ control:
 
   # RPM value that maps to full throttle (1.0) in CARLA.
   #   throttle = |velocity_rpm| / max_rpm    (clamped to [0, 1])
-  max_rpm: 1500.00
+  max_rpm: 1700.00
 
   # Max steering angle (degrees) that maps to full steer (±1.0) in CARLA.
   #   carla_steer = -steering_angle_deg / max_steer_deg   (+ left → − right)
@@ -709,6 +698,20 @@ ros2:
     feedback_steering_angles:  "feedback/steering_angles"
     # Motors feedback: /sim/feedback/motors           std_msgs/String (JSON)
     feedback_motors:           "feedback/motors"
+    # Vehicle physics: /sim/feedback/vehicle_physics  std_msgs/String (JSON)
+    #   mass, drag, centre of mass, road_friction_factor, and per wheel
+    #   tire_friction, tire_friction_configured, lat_stiff_value /
+    #   lat_stiff_max_load (PhysX mLatStiffY / mLatStiffX), long_stiff_value,
+    #   damping_rate, radius_m, max_steer_angle_deg, max_brake_torque.
+    #   tire_friction is the EFFECTIVE coefficient the physics step uses -
+    #   wheels[].tire_friction below multiplied by the road surface's own
+    #   coefficient (0.70 on this map, so 1.5 configured -> 1.05) - read from
+    #   the wheel telemetry, not assumed; the configured value is published
+    #   beside it. Latched (TRANSIENT_LOCAL, depth 1) and published only when
+    #   a value changes, including after a /sim/control/tire_friction command -
+    #   so a consumer can rebuild the tire curve the simulator is actually
+    #   integrating instead of hardcoding these numbers.
+    feedback_vehicle_physics:  "feedback/vehicle_physics"
     # Autonomous mode: /sim/feedback/autonomous_mode  std_msgs/Bool
     #   true  = autonomous control active
     #   false = user pressed 'b' in the GUI to force manual control

@@ -419,6 +419,7 @@ entirely, by design (see `ros2.namespace` above).
 | `/<namespace>/feedback/steering_angles` | `sensor_msgs/msg/JointState` | Per-wheel joint state, all 4 wheels |
 | `/<namespace>/feedback/motors` | `std_msgs/msg/String` | JSON: per-wheel speed/torque/brake/error state |
 | `/<namespace>/feedback/tire_forces` | `sim_manager_msgs/msg/TireForces` | Per-wheel slip, load, and force, straight from CARLA's own wheel telemetry |
+| `/<namespace>/feedback/vehicle_physics` | `std_msgs/msg/String` | JSON: mass, drag, centre of mass, `road_friction_factor`, and per wheel `tire_friction` (**effective**, i.e. configured x the road surface's coefficient), `tire_friction_configured`, `lat_stiff_value`/`lat_stiff_max_load` (PhysX `mLatStiffY`/`mLatStiffX`), `long_stiff_value`, `damping_rate`, `radius_m`, `max_steer_angle_deg`, `max_brake_torque`. **Latched** (`TRANSIENT_LOCAL`, depth 1) and published only when a value changes, so a late subscriber still gets the current set and a `control/tire_friction` command produces a new message |
 | `/<namespace>/feedback/vehicle_state` | `std_msgs/msg/String` | JSON: lights, blinkers, active steering mode |
 | `/<namespace>/<camera_name>/rgb` | `sensor_msgs/msg/Image` | Camera stream (RGB or the selected CARLA camera type) |
 | `/<namespace>/<camera_name>/camera_info` | `sensor_msgs/msg/CameraInfo` | Camera intrinsics |
@@ -511,6 +512,52 @@ array is `[FL, FR, RL, RR]`.
 CARLA's client is left-handed (+y right) while ROS is right-handed
 (+y left); `longitudinal_force` and `slip_ratio` need neither, since `x` is
 forward in both conventions and slip ratio is a dimensionless magnitude.
+
+#### `feedback/vehicle_physics`
+
+The parameters behind those forces: CARLA's `VehiclePhysicsControl` and its
+per-wheel `WheelPhysicsControl`, as JSON. Published from the physics cache
+(no RPC) only when a value changes, on a latched topic, so a consumer can
+rebuild the tire curve the simulator is integrating rather than hardcoding
+numbers that go stale when the vehicle config, the blueprint or a runtime
+`control/tire_friction` command changes them.
+
+```json
+{
+  "timestamp": 1788438105320.2,
+  "frame_id": "Vehicle_Physics",
+  "mass": 240.0,
+  "drag_coefficient": 0.426,
+  "road_friction_factor": 0.70,
+  "center_of_mass": { "x": 0.0, "y": 0.0, "z": 0.0 },
+  "wheel_names": ["FL", "FR", "RL", "RR"],
+  "wheels": [
+    { "name": "FL", "tire_friction": 1.05, "tire_friction_configured": 1.5,
+      "lat_stiff_max_load": 2.0, "lat_stiff_value": 17.0,
+      "long_stiff_value": 1000.0, "damping_rate": 1.0, "radius_m": 0.25,
+      "max_steer_angle_deg": 16.0, "max_brake_torque": 300.0 }
+  ]
+}
+```
+
+`lat_stiff_value` and `lat_stiff_max_load` are PhysX's `mLatStiffY` and
+`mLatStiffX`: with `tire_friction` they define the whole lateral tire curve,
+`Fy = mu*Fz*S1(C_lat*|tan(alpha)|/(mu*Fz))` where
+`C_lat = restLoad * lat_stiff_value * S1(3*normalisedLoad/lat_stiff_max_load)`
+and `S1(K) = min(1, K - K^2/3 + K^3/27)`.
+
+`tire_friction` is the **effective** coefficient the physics step is using —
+the wheel's configured value multiplied by the road surface's own, measured
+at 0.70 on this map (1.05 published against 1.5 configured). It is read from
+the same wheel telemetry `feedback/tire_forces` reports, so the two topics
+always agree and the factor is measured rather than assumed. The configured
+value is beside it as `tire_friction_configured`, and their ratio (over all
+four wheels) as the top-level `road_friction_factor`.
+
+One caveat: the physics cache only refreshes when the bridge itself writes
+physics, so a *configured* value changed by another client (e.g.
+`manual_control`) is not reported until the bridge's next friction/drag
+command. The effective friction, coming from telemetry, is always current.
 
 ### Subscribers
 
