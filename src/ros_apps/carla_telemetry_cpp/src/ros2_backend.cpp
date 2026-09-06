@@ -88,6 +88,13 @@ CarlaROS2Backend::CarlaROS2Backend(
   imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>(
       topic(get_or(topics_cfg_, "feedback_imu", "feedback/imu")),
       get_qos("imu"));
+  // Collisions are rare and must not be dropped, so this one stays RELIABLE
+  // with a depth that can absorb a multi-frame contact burst.
+  collision_pub_ =
+      node_->create_publisher<carla_msgs::msg::CarlaCollisionEvent>(
+          topic(
+              get_or(topics_cfg_, "feedback_collision", "feedback/collision")),
+          rclcpp::QoS(50).reliable());
   odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(
       topic(get_or(topics_cfg_, "odom", "odom")), get_qos("odometry"));
   boxes_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -526,6 +533,23 @@ void CarlaROS2Backend::publish_imu(const ImuState& s) {
   msg.orientation.z = s.qz;
   msg.orientation.w = s.qw;
   imu_pub_->publish(msg);
+}
+
+// Publish Collision
+
+void CarlaROS2Backend::publish_collision(const CollisionState& s) {
+  // Unlike every other publisher here, this one is driven by a CARLA sensor
+  // callback rather than by a loop the node stops on deactivate, so the
+  // activation guard has to be explicit.
+  if (!collision_pub_ || !collision_pub_->is_activated()) return;
+  carla_msgs::msg::CarlaCollisionEvent msg;
+  msg.header.stamp = epoch_to_stamp(s.capture_time);
+  msg.header.frame_id = s.frame_id;
+  msg.other_actor_id = s.other_actor_id;
+  msg.normal_impulse.x = s.impulse_x;
+  msg.normal_impulse.y = s.impulse_y;
+  msg.normal_impulse.z = s.impulse_z;
+  collision_pub_->publish(msg);
 }
 
 // Publish Camera
@@ -970,13 +994,6 @@ void CarlaROS2Backend::publish_vehicle_physics(
   std_msgs::msg::String msg;
   msg.data = j.dump();
   vehicle_physics_pub_->publish(msg);
-  RCLCPP_INFO(node_->get_logger(),
-              "[CarlaROS2Backend] vehicle physics: mass=%.1f kg, per-wheel "
-              "tire_friction=%.3f (configured %.3f), lat_stiff_value=%.2f, "
-              "lat_stiff_max_load=%.2f",
-              phys.mass, telem.wheels[0].tire_friction,
-              phys.wheels[0].tire_friction, phys.wheels[0].lat_stiff_value,
-              phys.wheels[0].lat_stiff_max_load);
 }
 
 // Publish Vehicle State (lights / blinkers / steering)
@@ -1607,6 +1624,7 @@ void CarlaROS2Backend::activate_publishers() {
   if (gps_vel_pub_) gps_vel_pub_->on_activate();
   if (battery_pub_) battery_pub_->on_activate();
   if (imu_pub_) imu_pub_->on_activate();
+  if (collision_pub_) collision_pub_->on_activate();
   if (odom_pub_) odom_pub_->on_activate();
   if (boxes_pub_) boxes_pub_->on_activate();
   if (speed_pub_) speed_pub_->on_activate();
@@ -1632,6 +1650,7 @@ void CarlaROS2Backend::deactivate_publishers() {
   if (gps_vel_pub_) gps_vel_pub_->on_deactivate();
   if (battery_pub_) battery_pub_->on_deactivate();
   if (imu_pub_) imu_pub_->on_deactivate();
+  if (collision_pub_) collision_pub_->on_deactivate();
   if (odom_pub_) odom_pub_->on_deactivate();
   if (boxes_pub_) boxes_pub_->on_deactivate();
   if (speed_pub_) speed_pub_->on_deactivate();

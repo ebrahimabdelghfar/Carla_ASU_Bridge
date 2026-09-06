@@ -491,6 +491,14 @@ void CarlaTelemetryNode::setup_sensors() {
         isp["yaw"].as<float>(0));
   }
 
+  // Collision
+  auto collision_cfg = config_["collision"];
+  if (collision_cfg["enabled"].as<bool>(true)) {
+    collision_ = std::make_unique<CarlaCollision>(
+        world, actor, backend_.get(),
+        collision_cfg["frame_id"].as<std::string>("base_link"));
+  }
+
   // Odometry
   auto odom_cfg = config_["odometry"];
   if (odom_cfg["enabled"].as<bool>(true)) {
@@ -1278,6 +1286,12 @@ void CarlaTelemetryNode::shutdown() {
   if (imu_) {
     imu_->destroy();
     imu_.reset();
+  }
+  // Before backend_->shutdown() below: the sensor callback holds a raw pointer
+  // to the backend and must be stopped while that is still valid.
+  if (collision_) {
+    collision_->destroy();
+    collision_.reset();
   }
   if (odometry_) {
     odometry_.reset();

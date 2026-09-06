@@ -23,6 +23,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
+#include <carla_msgs/msg/carla_collision_event.hpp>
 #include <carla_msgs/srv/set_steering_mode.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -156,6 +157,7 @@ class CarlaROS2Backend {
   void publish_gps(const GpsState& gps);
   void publish_battery(const BatteryState& bat);
   void publish_imu(const ImuState& imu);
+  void publish_collision(const CollisionState& collision);
   void publish_camera_image(CameraData& data);  // moves data.rgb into the msg
   void publish_camera_info(const CameraData& data);
   void publish_odometry(const OdometryState& odom);
@@ -362,6 +364,8 @@ class CarlaROS2Backend {
       sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::Imu>::SharedPtr
       imu_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<
+      carla_msgs::msg::CarlaCollisionEvent>::SharedPtr collision_pub_;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Odometry>::SharedPtr
       odom_pub_;
   rclcpp_lifecycle::LifecyclePublisher<

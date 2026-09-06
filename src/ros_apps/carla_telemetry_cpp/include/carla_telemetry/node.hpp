@@ -18,6 +18,7 @@
 #include "carla_telemetry/ros2_backend.hpp"
 #include "carla_telemetry/sensor_manager.hpp"
 #include "carla_telemetry/sensors/battery.hpp"
+#include "carla_telemetry/sensors/collision.hpp"
 #include "carla_telemetry/sensors/gps.hpp"
 #include "carla_telemetry/sensors/ground_truth_boxes.hpp"
 #include "carla_telemetry/sensors/imu.hpp"
@@ -74,6 +75,7 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
   std::unique_ptr<CarlaGPS> gps_;
   std::unique_ptr<CarlaBattery> battery_;
   std::unique_ptr<CarlaIMU> imu_;
+  std::unique_ptr<CarlaCollision> collision_;
   std::unique_ptr<CarlaOdometry> odometry_;
   // odometry.follow_server_rate: when true the odom loop never dead-reckons —
   // it emits exactly one message per source sample, at that sample's own stamp.

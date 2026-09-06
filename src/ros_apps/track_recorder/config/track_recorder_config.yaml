@@ -1,6 +1,6 @@
 track_recorder:
   ros__parameters:
-    odom_topic: "/sim/odom"
+    odom_topic: "/odom"
     output_csv: "/home/ebrahim/Carla_ASU_Bridge/src/ros_apps/global_racetrajectory_optimization/inputs/tracks/handling_track_recorded.csv"
     w_tr_right_m: 3.0
     w_tr_left_m: 3.0

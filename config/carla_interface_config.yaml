@@ -8,7 +8,7 @@ carla:
   # Set to false to run in asynchronous mode (world ticks on its own clock).
   synchronous_mode: true
   # Applied in BOTH sync and async. In async this is the "async fixed step":
-  fixed_delta_seconds: 0.033    # 50 Hz world physics step
+  fixed_delta_seconds: 0.033    # 30 Hz world physics step
 
   # When true, spawn manual_control.py as a subprocess after the vehicle spawns.
   # Requires pygame and a display.
@@ -289,6 +289,16 @@ imu:
   # Publish rate (Hz) for IMU ROS 2 publisher
   update_rate: 50.0
   qos_reliability: "BEST_EFFORT"
+
+# Collision
+# CARLA's sensor.other.collision, republished on /sim/feedback/collision as
+# carla_msgs/CarlaCollisionEvent. Event-driven: no update_rate, no polling
+# thread. The server fires one event per contact frame, so a scrape arrives as
+# a burst of them and every one is published — deciding what counts as a crash
+# is the subscriber's job (benchmark_runner thresholds on impulse magnitude).
+collision:
+  enabled: true
+  frame_id: "base_link"
 
 # Odometry
 # Ground-truth odometry computed from CARLA vehicle transform and velocity.
@@ -721,6 +731,10 @@ ros2:
     odom:                      "/odom"
     # Ground-truth boxes: /sim/ground_truth/boxes  visualization_msgs/MarkerArray
     ground_truth_boxes:        "ground_truth/boxes"
+    # Collision:      /sim/feedback/collision         carla_msgs/CarlaCollisionEvent
+    #   One message per contact frame, RELIABLE depth 50 so a burst is not
+    #   dropped. normal_impulse is in the ROS frame (y negated from CARLA).
+    feedback_collision:        "feedback/collision"
 
     # Control inputs (subscriptions)
     # Wheel velocity: /sim/control/velocity_rpm       std_msgs/Float32   (RPM)

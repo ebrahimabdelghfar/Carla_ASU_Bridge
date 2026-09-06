@@ -84,6 +84,7 @@ set(SOURCES
   src/ros2_backend.cpp
   src/perf_monitor.cpp
   src/sensors/battery.cpp
+  src/sensors/collision.cpp
   src/sensors/gps.cpp
   src/sensors/imu.cpp
   src/sensors/odometry.cpp

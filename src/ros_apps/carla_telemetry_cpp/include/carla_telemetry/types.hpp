@@ -57,6 +57,15 @@ struct ImuState {
   double capture_time = 0.0;  // epoch seconds
 };
 
+struct CollisionState {
+  uint32_t other_actor_id = 0;
+  double impulse_x = 0.0;  // N*s, ROS frame
+  double impulse_y = 0.0;
+  double impulse_z = 0.0;
+  std::string frame_id = "base_link";
+  double capture_time = 0.0;  // epoch seconds
+};
+
 struct OdometryState {
   std::string frame_id = "odom";
   std::string child_frame_id = "base_link";
