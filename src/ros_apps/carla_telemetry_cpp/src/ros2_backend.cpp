@@ -1242,8 +1242,8 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
                      "no longer holds.",
                      drive_mode_.c_str());
   }
-  RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
-              friction);
+  RCLCPP_DEBUG(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
+               friction);
   message = "Applied.";
   return true;
 }
