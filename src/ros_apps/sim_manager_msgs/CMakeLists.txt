@@ -42,6 +42,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/MissionAction.srv"
   "srv/MissionHistoryQuery.srv"
   "srv/SessionControl.srv"
+  "srv/SetTireFriction.srv"
   DEPENDENCIES builtin_interfaces nav_msgs
 )
 

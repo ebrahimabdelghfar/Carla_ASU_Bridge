@@ -40,6 +40,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sim_manager_msgs/msg/tire_forces.hpp>
+#include <sim_manager_msgs/srv/set_tire_friction.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/float32.hpp>
@@ -63,7 +64,8 @@ class CarlaROS2Backend {
       const std::unordered_map<std::string, std::string>& services_cfg = {},
       const std::unordered_map<std::string, std::string>& qos_cfg = {},
       const std::string& ns = "sim",
-      rclcpp::CallbackGroup::SharedPtr cb_group = nullptr);
+      rclcpp::CallbackGroup::SharedPtr cb_group = nullptr,
+      rclcpp::CallbackGroup::SharedPtr physics_cb_group = nullptr);
 
   // Injectors
   struct PIDConfig {
@@ -138,9 +140,9 @@ class CarlaROS2Backend {
                           const ControlModeConfig& mode_cfg);
 
   // Set which wheels the drivetrain turns ("AWD"/"FWD"/"RWD"), mirroring
-  // vehicle.drive_mode. Used by set_tire_friction() to keep the non-driven
-  // wheels at CarlaVehicle::kNonDrivenTireFriction when friction changes at
-  // runtime.
+  // vehicle.drive_mode. set_tire_friction() reads it only to warn that a
+  // runtime change flattens the FWD/RWD emulation CarlaVehicle::apply_physics
+  // sets up at spawn.
   void set_drive_mode(const std::string& drive_mode) {
     drive_mode_ = drive_mode;
   }
@@ -310,13 +312,17 @@ class CarlaROS2Backend {
   bool physics_cached_ = false;
   carla::rpc::VehiclePhysicsControl cached_physics_;
 
-  // Last values written by apply_tire_friction/apply_drag_coefficient, kept so
+  // Last values written by set_tire_friction/apply_drag_coefficient, kept so
   // a repeated command is dropped instead of re-issued: ApplyPhysicsControl
   // re-initialises the vehicle's wheel setup and zeroes wheel spin, so a
   // publisher repeating the same value (ros2 topic pub defaults to 1 Hz) would
   // stall the car once per message. NaN until the first write.
   float applied_tire_friction_ = std::numeric_limits<float>::quiet_NaN();
   float applied_drag_coefficient_ = std::numeric_limits<float>::quiet_NaN();
+
+  // The static.trigger.friction actor currently holding the commanded grip.
+  // Replaced, not edited: the friction is a spawn attribute of the blueprint.
+  carla::SharedPtr<carla::client::Actor> friction_trigger_;
 
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
@@ -328,12 +334,16 @@ class CarlaROS2Backend {
   // it.
   carla::rpc::VehiclePhysicsControl physics(carla::client::Vehicle& v);
 
-  // Set the ground friction coefficient of all tires at runtime. Writes
-  // CARLA's per-wheel WheelPhysicsControl::tire_friction; feedback/tire_forces
-  // reports CARLA's own per-wheel forces, so they follow this change with
-  // nothing else to keep in sync. Non-driven wheels keep the low-friction
-  // value that CarlaVehicle::apply_physics uses to emulate FWD/RWD.
-  void apply_tire_friction(float friction);
+  // Set the ground friction coefficient of all four tires at runtime by
+  // replacing the static.trigger.friction actor the vehicle stands in. The
+  // trigger reaches the tire through ACarlaWheeledVehicle::SetWheelsFrictionScale,
+  // which writes the same quantity as WheelPhysicsControl::tire_friction but
+  // does not rebuild the PhysX vehicle the way ApplyPhysicsControl does — so a
+  // friction ramp no longer stalls the car once per step. Writes message and
+  // returns false when the command is rejected. Uniform across the four
+  // wheels: the trigger has no per-wheel value, so the FWD/RWD emulation in
+  // CarlaVehicle::apply_physics does not survive a runtime change.
+  bool set_tire_friction(float friction, std::string& message);
 
   void apply_drag_coefficient(float drag);
 
@@ -419,7 +429,6 @@ class CarlaROS2Backend {
   rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr spawn_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sim_start_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sim_stop_sub_;
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr tire_friction_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr drag_sub_;
 
   // Services
@@ -438,12 +447,18 @@ class CarlaROS2Backend {
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr force_manual_control_srv_;
   rclcpp::Service<carla_msgs::srv::SetSteeringMode>::SharedPtr
       set_steering_mode_srv_;
+  rclcpp::Service<sim_manager_msgs::srv::SetTireFriction>::SharedPtr
+      tire_friction_srv_;
 
   // Group owned by the node (created once, before add_node). Every
   // subscription/service here uses it, so the node's DEFAULT group stays free
   // for the lifecycle change_state/get_state services. NEVER create a group
   // in this class — the backend is rebuilt per configure. See node.hpp.
   rclcpp::CallbackGroup::SharedPtr cb_group_;
+
+  // Also node-owned. Separate from cb_group_ so a friction ramp cannot starve
+  // the drive commands — see node.hpp.
+  rclcpp::CallbackGroup::SharedPtr physics_cb_group_;
 
   std::atomic<bool> manual_control_override_{false};
   ControlModeConfig original_control_mode_;

@@ -1,0 +1,6 @@
+# Set the tire-to-ground friction coefficient of the ego vehicle at runtime.
+# The value is a friction scale applied to all four tires; 0 is frictionless.
+float32 friction
+---
+bool success
+string message

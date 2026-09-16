@@ -1,5 +1,7 @@
 #include "carla_telemetry/ros2_backend.hpp"
 
+#include <carla/actors/ActorBlueprint.h>
+#include <carla/actors/BlueprintLibrary.h>
 #include <carla/client/World.h>
 #include <carla/client/WorldSnapshot.h>
 #include <carla/rpc/VehicleControl.h>
@@ -28,6 +30,14 @@ std::string get_or(const std::unordered_map<std::string, std::string>& m,
 // already applied and skipped.
 constexpr float kFrictionEpsilon = 1e-4f;
 
+// Runtime tire friction is carried by one of these, spawned around the ego.
+constexpr const char* kFrictionTriggerBlueprint = "static.trigger.friction";
+
+// Box half-extent, centimetres. The trigger restores the friction it replaced
+// as soon as the vehicle leaves it, so the box has to outlast any drive: 1 km
+// covers every track in use here.
+constexpr float kFrictionTriggerExtentCm = 100000.0f;
+
 // Used only if the physics control reports no wheels; matches the configured
 // vehicle.physics.wheels[].radius.
 constexpr double kFallbackWheelRadius = 0.25;
@@ -52,10 +62,12 @@ CarlaROS2Backend::CarlaROS2Backend(
     const std::unordered_map<std::string, std::string>& topics_cfg,
     const std::unordered_map<std::string, std::string>& services_cfg,
     const std::unordered_map<std::string, std::string>& qos_cfg,
-    const std::string& ns, rclcpp::CallbackGroup::SharedPtr cb_group)
+    const std::string& ns, rclcpp::CallbackGroup::SharedPtr cb_group,
+    rclcpp::CallbackGroup::SharedPtr physics_cb_group)
     : node_(node),
       namespace_(ns),
       cb_group_(std::move(cb_group)),
+      physics_cb_group_(std::move(physics_cb_group)),
       topics_cfg_(topics_cfg),
       services_cfg_(services_cfg),
       qos_cfg_(qos_cfg) {
@@ -189,17 +201,25 @@ CarlaROS2Backend::CarlaROS2Backend(
       },
       sub_opts);
 
-  // Runtime environment tuning: tire-to-ground friction and aerodynamic drag.
-  // Both go straight to ApplyPhysicsControl, so they take effect on the next
-  // physics step without respawning the vehicle.
-  tire_friction_sub_ = node_->create_subscription<std_msgs::msg::Float32>(
-      topic(get_or(topics_cfg_, "control_tire_friction",
-                   "control/tire_friction")),
-      qos_rel,
-      [this](const std_msgs::msg::Float32::SharedPtr msg) {
-        apply_tire_friction(msg->data);
-      },
-      sub_opts);
+  // Runtime environment tuning. Friction is a service, not a topic: each
+  // change costs two CARLA RPCs, and a service call back-pressures the caller
+  // so a ramp cannot queue faster than the simulator can absorb it. It runs on
+  // physics_cb_group_ so it never sits in front of a drive command.
+  tire_friction_srv_ =
+      node_->create_service<sim_manager_msgs::srv::SetTireFriction>(
+          topic(get_or(services_cfg_, "set_tire_friction",
+                       "control/set_tire_friction")),
+          [this](
+              const sim_manager_msgs::srv::SetTireFriction::Request::SharedPtr
+                  req,
+              sim_manager_msgs::srv::SetTireFriction::Response::SharedPtr
+                  resp) {
+            resp->success = set_tire_friction(req->friction, resp->message);
+          },
+          rmw_qos_profile_services_default, physics_cb_group_);
+
+  // Drag still goes straight to ApplyPhysicsControl: it is set once per
+  // scenario, not ramped, so the physics rebuild it costs is acceptable.
   drag_sub_ = node_->create_subscription<std_msgs::msg::Float32>(
       topic(get_or(topics_cfg_, "control_drag_coefficient",
                    "control/drag_coefficient")),
@@ -1143,44 +1163,64 @@ void CarlaROS2Backend::apply_physics_preserving_motion(
   v.SetTargetAngularVelocity(angular);
 }
 
-void CarlaROS2Backend::apply_tire_friction(float friction) {
-  if (!vehicle_actor_) return;
-  auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
-  if (!v) return;
+bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
   if (!std::isfinite(friction) || friction < 0.0f) {
-    RCLCPP_WARN(node_->get_logger(),
-                "[CarlaROS2Backend] Ignoring tire_friction=%.3f (must be "
-                "finite and >= 0).",
-                friction);
-    return;
+    message = "friction must be finite and >= 0.";
+    return false;
+  }
+  if (!vehicle_actor_ || !vehicle_) {
+    message = "No vehicle.";
+    return false;
   }
 
   std::lock_guard<std::mutex> lk(physics_mutex_);
   if (std::fabs(friction - applied_tire_friction_) <= kFrictionEpsilon) {
-    return;
+    message = "Already applied.";
+    return true;
   }
-  // Re-read from the server instead of editing the cache: manual_control or
-  // any other client may have changed physics since the last fetch, and
-  // ApplyPhysicsControl writes the whole struct back.
-  auto pc = v->GetPhysicsControl();
-  auto wheels = pc.GetWheels();
-  const std::string& drive_mode = drive_mode_;
-  for (size_t i = 0; i < wheels.size(); ++i) {
-    bool driven = (i < 2) ? (drive_mode != "RWD") : (drive_mode != "FWD");
-    wheels[i].tire_friction =
-        driven ? friction : CarlaVehicle::kNonDrivenTireFriction;
+
+  auto& world = vehicle_->world();
+  auto library = world.GetBlueprintLibrary();
+  const auto* definition = library->Find(kFrictionTriggerBlueprint);
+  if (definition == nullptr) {
+    message = std::string(kFrictionTriggerBlueprint) + " is not available.";
+    return false;
   }
-  pc.SetWheels(wheels);
-  apply_physics_preserving_motion(*v, pc);
-  cached_physics_ = pc;
-  physics_cached_ = true;
+  carla::actors::ActorBlueprint blueprint = *definition;
+  blueprint.SetAttribute("friction", std::to_string(friction));
+  const std::string extent = std::to_string(kFrictionTriggerExtentCm);
+  blueprint.SetAttribute("extent_x", extent);
+  blueprint.SetAttribute("extent_y", extent);
+  blueprint.SetAttribute("extent_z", extent);
+
+  // Destroy before spawning, never the other way round: a live trigger
+  // restores the friction it replaced when the vehicle leaves it, so a new
+  // trigger spawned first would be undone by the old one's teardown.
+  if (friction_trigger_) {
+    friction_trigger_->Destroy();
+    friction_trigger_ = nullptr;
+  }
+  const carla::geom::Transform at(vehicle_actor_->GetLocation(),
+                                  carla::geom::Rotation());
+  friction_trigger_ = world.TrySpawnActor(blueprint, at);
+  if (!friction_trigger_) {
+    applied_tire_friction_ = std::numeric_limits<float>::quiet_NaN();
+    message = "Failed to spawn the friction trigger.";
+    return false;
+  }
   applied_tire_friction_ = friction;
 
-  // feedback/tire_forces reports CARLA's own per-wheel forces, so this physics
-  // write is the only place grip is set — nothing downstream to keep in sync.
-  RCLCPP_INFO(node_->get_logger(),
-              "[CarlaROS2Backend] tire_friction = %.3f (drive_mode=%s).",
-              friction, drive_mode.c_str());
+  if (drive_mode_ != "AWD") {
+    RCLCPP_WARN_ONCE(node_->get_logger(),
+                     "[CarlaROS2Backend] Runtime tire friction is uniform "
+                     "across all four wheels; the %s emulation set up at spawn "
+                     "no longer holds.",
+                     drive_mode_.c_str());
+  }
+  RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
+              friction);
+  message = "Applied.";
+  return true;
 }
 
 void CarlaROS2Backend::apply_drag_coefficient(float drag) {

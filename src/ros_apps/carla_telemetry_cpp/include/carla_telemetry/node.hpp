@@ -105,6 +105,11 @@ class CarlaTelemetryNode : public rclcpp_lifecycle::LifecycleNode {
   //    rclcpp.
   rclcpp::CallbackGroup::SharedPtr entity_cb_group_;
 
+  // Runtime physics edits (tire friction) get their own group: each one
+  // destroys and respawns a CARLA actor, and a ramp issued at control rate
+  // would otherwise hold entity_cb_group_ and starve the drive commands.
+  rclcpp::CallbackGroup::SharedPtr physics_cb_group_;
+
   // Sensor threads (control_loop lives here too — see start_sensor_threads)
   std::vector<std::thread> sensor_threads_;
   std::atomic<bool> shutdown_{false};

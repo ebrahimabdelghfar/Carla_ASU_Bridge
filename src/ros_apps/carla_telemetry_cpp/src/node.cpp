@@ -26,6 +26,8 @@ CarlaTelemetryNode::CarlaTelemetryNode(const rclcpp::NodeOptions& options)
   // One long-lived group for all backend entities — see node.hpp.
   entity_cb_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  physics_cb_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 }
 
 CarlaTelemetryNode::~CarlaTelemetryNode() { shutdown(); }
@@ -289,8 +291,8 @@ void CarlaTelemetryNode::setup_vehicle() {
     qos_cfg["ground_truth_boxes"] =
         config_["ground_truth_boxes"]["qos_reliability"].as<std::string>();
 
-  backend_ = std::make_unique<CarlaROS2Backend>(this, topics, services, qos_cfg,
-                                                ns, entity_cb_group_);
+  backend_ = std::make_unique<CarlaROS2Backend>(
+      this, topics, services, qos_cfg, ns, entity_cb_group_, physics_cb_group_);
   backend_->set_vehicle_actor(vehicle_->actor());
 
   auto ctrl = config_["control"];

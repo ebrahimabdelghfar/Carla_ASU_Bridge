@@ -291,11 +291,6 @@ imu:
   qos_reliability: "BEST_EFFORT"
 
 # Collision
-# CARLA's sensor.other.collision, republished on /sim/feedback/collision as
-# carla_msgs/CarlaCollisionEvent. Event-driven: no update_rate, no polling
-# thread. The server fires one event per contact frame, so a scrape arrives as
-# a burst of them and every one is published — deciding what counts as a crash
-# is the subscriber's job (benchmark_runner thresholds on impulse magnitude).
 collision:
   enabled: true
   frame_id: "base_link"
@@ -475,11 +470,6 @@ cameras:
     topic_camera_info: "/fl_camera/camera_info"
 
 # Third-Person Chase View
-# A single RGB camera attached behind/above the ego vehicle, framed like the
-# manual_control chase view (its default view: Location(x=-2*bound_x, z=2*bound_z),
-# Rotation(pitch=8)). Streamed as its own ROS 2 image topic and, when
-# dedicated_clients.enabled is true, captured by its own CARLA client just like
-# the other cameras/LiDARs. Toggle with `enabled`; tune `topic_rgb`/`update_rate`.
 third_person_view:
   enabled: false
   qos_reliability: "BEST_EFFORT"
@@ -752,14 +742,6 @@ ros2:
     # respawned and no relaunch is needed. Values are not persisted: on
     # restart the vehicle.physics block above takes effect again.
     #
-    # Tire friction:  /sim/control/tire_friction      std_msgs/Float32   (>= 0)
-    #   Overrides vehicle.physics.wheels[*].tire_friction on every driven
-    #   wheel. Non-driven wheels keep tire_friction 0.1 so the FWD/RWD
-    #   emulation described in the vehicle.drive_mode comment survives.
-    #   This is the only place grip is set: /sim/feedback/tire_forces reports
-    #   CARLA's own per-wheel forces, so they follow the commanded friction
-    #   with no second tire model to keep in sync.
-    control_tire_friction:       "control/tire_friction"
     # Drag coefficient: /sim/control/drag_coefficient std_msgs/Float32   (>= 0)
     #   Overrides vehicle.physics.drag_coefficient (aerodynamic Cd).
     control_drag_coefficient:    "control/drag_coefficient"
@@ -781,3 +763,17 @@ ros2:
     siren:         "control/lights/siren"
     set_steering_mode: "control/set_steering_mode"
     force_manual_control: "control/force_manual_control"
+
+    # Tire friction: /sim/control/set_tire_friction
+    #   sim_manager_msgs/SetTireFriction (friction >= 0)
+    #   Overrides vehicle.physics.wheels[*].tire_friction on all four wheels,
+    #   uniformly: it is applied by respawning a static.trigger.friction box
+    #   around the ego, and that trigger has no per-wheel value, so the FWD/RWD
+    #   emulation described in the vehicle.drive_mode comment does not survive
+    #   a runtime change. It is a service rather than a topic because
+    #   ApplyPhysicsControl — the only other way in — rebuilds the whole PhysX
+    #   vehicle and stalls the car once per write.
+    #   This is the only place grip is set at runtime: /sim/feedback/tire_forces
+    #   reports CARLA's own per-wheel forces, so they follow the commanded
+    #   friction with no second tire model to keep in sync.
+    set_tire_friction: "control/set_tire_friction"
