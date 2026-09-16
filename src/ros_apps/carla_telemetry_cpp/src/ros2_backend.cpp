@@ -891,6 +891,27 @@ void CarlaROS2Backend::publish_motors() {
   motors_pub_->publish(msg);
 }
 
+std::array<double, 4> CarlaROS2Backend::effective_tire_friction(
+    const carla::rpc::VehicleTelemetryData& telem) {
+  std::array<double, 4> mu{};
+  double sum = 0.0;
+  for (size_t i = 0; i < 4; ++i) {
+    mu[i] = telem.wheels[i].tire_friction;
+    sum += mu[i];
+  }
+
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  if (!(applied_tire_friction_ > 0.0f)) return mu;  // NaN-safe: no command yet.
+  if (telem.speed > kStandstillSpeed) {
+    road_friction_factor_ = sum / 4.0 / applied_tire_friction_;
+  } else if (std::isfinite(road_friction_factor_)) {
+    // The trigger writes one friction to all four wheels, so a single value is
+    // the whole truth at rest.
+    mu.fill(applied_tire_friction_ * road_friction_factor_);
+  }
+  return mu;
+}
+
 void CarlaROS2Backend::publish_tire_forces(
     const carla::rpc::VehicleTelemetryData& telem, double capture_epoch,
     uint64_t capture_frame) {
@@ -914,6 +935,7 @@ void CarlaROS2Backend::publish_tire_forces(
   }
   const double chassis_speed = telem.speed;
   const bool standstill = chassis_speed <= kStandstillSpeed;
+  const auto mu = effective_tire_friction(telem);
 
   for (size_t i = 0; i < 4; ++i) {
     const auto& w = telem.wheels[i];
@@ -926,7 +948,7 @@ void CarlaROS2Backend::publish_tire_forces(
     // ratio -1.02 on both front wheels and -0.85 on both rear, i.e. equal
     // magnitude in degrees, opposite sign. The message publishes rad.
     msg.slip_angle[i] = standstill ? 0.0 : w.lat_slip * M_PI / 180.0;
-    msg.tire_friction[i] = w.tire_friction;
+    msg.tire_friction[i] = mu[i];
     msg.wheel_speed[i] = w.omega;
     msg.slip_ratio[i] =
         standstill ? 0.0
@@ -950,18 +972,20 @@ void CarlaROS2Backend::publish_vehicle_physics(
 
   // Same order as every array in sim_manager_msgs/TireForces.
   const std::array<std::string, 4> wheel_names{"FL", "FR", "RL", "RR"};
+  const auto mu = effective_tire_friction(telem);
   nlohmann::json wheels = nlohmann::json::array();
   double configured_sum = 0.0;
   double effective_sum = 0.0;
   for (size_t i = 0; i < 4; ++i) {
     const auto& w = phys.wheels[i];
     // tire_friction is the EFFECTIVE coefficient the physics step is using -
-    // the telemetry's own value, which is the configured
+    // the telemetry's own value (see effective_tire_friction for the
+    // standstill case), which is the configured
     // WheelPhysicsControl.tire_friction multiplied by the road surface's
     // coefficient (a measured 0.70 on this map: 1.05 against 1.5 configured).
     // A consumer computing mu*Fz must use this one, so it is the field that
     // carries the plain name; the configured value is published beside it.
-    const double effective = telem.wheels[i].tire_friction;
+    const double effective = mu[i];
     configured_sum += w.tire_friction;
     effective_sum += effective;
     // lat_stiff_value / lat_stiff_max_load are PhysX's mLatStiffY / mLatStiffX:

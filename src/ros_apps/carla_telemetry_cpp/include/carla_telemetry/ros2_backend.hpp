@@ -5,6 +5,7 @@
 #include <carla/rpc/VehiclePhysicsControl.h>
 #include <carla/rpc/VehicleTelemetryData.h>
 
+#include <array>
 #include <atomic>
 #include <limits>
 #include <memory>
@@ -320,6 +321,12 @@ class CarlaROS2Backend {
   float applied_tire_friction_ = std::numeric_limits<float>::quiet_NaN();
   float applied_drag_coefficient_ = std::numeric_limits<float>::quiet_NaN();
 
+  // Ratio of the effective friction PhysX reports to the value commanded here,
+  // i.e. the road surface's own coefficient (a measured 0.70 on this map).
+  // Sampled only while the car is rolling — a parked one's telemetry is frozen.
+  // NaN until a commanded friction has been driven on.
+  double road_friction_factor_ = std::numeric_limits<double>::quiet_NaN();
+
   // The static.trigger.friction actor currently holding the commanded grip.
   // Replaced, not edited: the friction is a spawn attribute of the blueprint.
   carla::SharedPtr<carla::client::Actor> friction_trigger_;
@@ -333,6 +340,16 @@ class CarlaROS2Backend {
   // telemetry thread read the struct while the subscription thread rewrites
   // it.
   carla::rpc::VehiclePhysicsControl physics(carla::client::Vehicle& v);
+
+  // Effective per-wheel friction for the telemetry publishers, in wheel order.
+  // PhysX sleeps a parked vehicle and GetTelemetryData then repeats the last
+  // live frame, so friction commanded at standstill would read as the previous
+  // value until the car moves. While rolling the telemetry is passed through
+  // and calibrates road_friction_factor_; at rest the commanded friction scaled
+  // by that factor replaces it. Falls back to the raw telemetry while no
+  // command has been applied or the factor is still unmeasured.
+  std::array<double, 4> effective_tire_friction(
+      const carla::rpc::VehicleTelemetryData& telem);
 
   // Set the ground friction coefficient of all four tires at runtime by
   // replacing the static.trigger.friction actor the vehicle stands in. The

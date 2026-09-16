@@ -5,7 +5,7 @@
 #
 # Wheel order for every array below: FL, FR, RL, RR.
 #
-# Below 0.5 m/s of chassis speed, slip_angle, slip_ratio, lateral_force,
+# Below 0.01 m/s of chassis speed, slip_angle, slip_ratio, lateral_force,
 # longitudinal_force and wheel_torque are all published as 0. PhysX sleeps a
 # parked vehicle, and the wheel telemetry then repeats byte for byte on every
 # frame afterwards (-4.4 / -6.6 / -5.1 / -4.8 N of lateral force held unchanged
@@ -13,7 +13,12 @@
 # nothing behind it updates; and the frame where motion stops carries a spike,
 # because lat_slip is an atan2 of two vanishing velocities — at 0.01 m/s it
 # read -2.0 to +2.6 deg with +/-334 N of lateral force on wheels already at
-# omega = 0. normal_load, tire_friction and wheel_speed stay live at rest.
+# omega = 0. normal_load and wheel_speed are published as the telemetry reports
+# them: a parked car really carries its weight and its wheels really are at
+# rest, so the repeated frame is still the truth. tire_friction is not — a
+# friction command applied while parked lands in the physics but never reaches
+# the sleeping telemetry — so at rest it is republished as the commanded
+# coefficient times the road factor measured while last rolling.
 
 # Sim-clock stamp of the world frame the telemetry RPC was served on, so it is
 # byte-identical to the /odom, /sim/feedback/imu and LiDAR stamps of that same
