@@ -175,28 +175,28 @@ vehicle:
 
     wheels:
       - position: "FL"                 # front-left
-        tire_friction: 1.5
+        tire_friction: 1.0
         damping_rate: 1.0
         max_steer_angle: 16.0          # degrees
         radius: 25.0                   # centimetres
         max_brake_torque: 300.0       # N*m
         max_handbrake_torque: 500.0   # N*m
       - position: "FR"                 # front-right
-        tire_friction: 1.5
+        tire_friction: 1.0
         damping_rate: 1.0
         max_steer_angle: 16.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RL"                 # rear-left
-        tire_friction: 1.5
+        tire_friction: 1.0
         damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0
         max_brake_torque: 300.0
         max_handbrake_torque: 500.0
       - position: "RR"                 # rear-right
-        tire_friction: 1.5
+        tire_friction: 1.0
         damping_rate: 1.0
         max_steer_angle: 0.0
         radius: 25.0

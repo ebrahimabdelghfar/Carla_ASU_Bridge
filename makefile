@@ -114,7 +114,7 @@ launch_carla_sim_low: kill_stale_sim
 	}; \
 	trap 'cleanup; exit' INT TERM HUP; \
 	source install/ros_apps/setup.bash; \
-	$(CARLA_AS_USER) setsid bash ASU_RT_Carla/CarlaUE4.sh -vulkan -renderoffscreen -quality-level=Low & \
+	$(CARLA_AS_USER) DRI_PRIME=1 setsid bash ASU_RT_Carla/CarlaUE4.sh -vulkan -prefernvidia -renderoffscreen -quality-level=Low & \
 	until nc -z localhost 2000; do sleep 1; done; \
 	setsid ros2 launch carla_telemetry_cpp carla_telemetry.launch.py auto_start:=$(AUTO_START) & \
 	L_PID=$$!; \
