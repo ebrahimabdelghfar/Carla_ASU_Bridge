@@ -205,18 +205,16 @@ CarlaROS2Backend::CarlaROS2Backend(
   // change costs two CARLA RPCs, and a service call back-pressures the caller
   // so a ramp cannot queue faster than the simulator can absorb it. It runs on
   // physics_cb_group_ so it never sits in front of a drive command.
-  tire_friction_srv_ =
-      node_->create_service<sim_manager_msgs::srv::SetTireFriction>(
-          topic(get_or(services_cfg_, "set_tire_friction",
-                       "control/set_tire_friction")),
-          [this](
-              const sim_manager_msgs::srv::SetTireFriction::Request::SharedPtr
-                  req,
-              sim_manager_msgs::srv::SetTireFriction::Response::SharedPtr
-                  resp) {
-            resp->success = set_tire_friction(req->friction, resp->message);
-          },
-          rmw_qos_profile_services_default, physics_cb_group_);
+  tire_friction_srv_ = node_->create_service<
+      sim_manager_msgs::srv::SetTireFriction>(
+      topic(get_or(services_cfg_, "set_tire_friction",
+                   "control/set_tire_friction")),
+      [this](
+          const sim_manager_msgs::srv::SetTireFriction::Request::SharedPtr req,
+          sim_manager_msgs::srv::SetTireFriction::Response::SharedPtr resp) {
+        resp->success = set_tire_friction(req->friction, resp->message);
+      },
+      rmw_qos_profile_services_default, physics_cb_group_);
 
   // Drag still goes straight to ApplyPhysicsControl: it is set once per
   // scenario, not ramped, so the physics rebuild it costs is acceptable.
@@ -1209,6 +1207,9 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
     return false;
   }
   applied_tire_friction_ = friction;
+  // The trigger writes the same wheel field GetPhysicsControl reads back, so
+  // the cache (and feedback/vehicle_physics with it) is now a step behind.
+  physics_cached_ = false;
 
   if (drive_mode_ != "AWD") {
     RCLCPP_WARN_ONCE(node_->get_logger(),

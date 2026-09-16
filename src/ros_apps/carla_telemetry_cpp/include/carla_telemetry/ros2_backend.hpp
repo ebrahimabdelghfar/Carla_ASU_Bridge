@@ -184,7 +184,7 @@ class CarlaROS2Backend {
   // tire_friction, lat/long stiffness, radius, steer limit) as JSON on a
   // latched topic, so a consumer can rebuild CARLA's tire model instead of
   // hardcoding numbers that go stale whenever the config, the blueprint or a
-  // runtime /sim/control/tire_friction command changes them. Serves the
+  // runtime /sim/control/set_tire_friction call changes them. Serves the
   // physics cache, so no RPC, and publishes only when the JSON changes.
   // Takes the telemetry snapshot because the friction that matters is the
   // EFFECTIVE one PhysX is using (configured x the road surface's own
@@ -336,13 +336,14 @@ class CarlaROS2Backend {
 
   // Set the ground friction coefficient of all four tires at runtime by
   // replacing the static.trigger.friction actor the vehicle stands in. The
-  // trigger reaches the tire through ACarlaWheeledVehicle::SetWheelsFrictionScale,
-  // which writes the same quantity as WheelPhysicsControl::tire_friction but
-  // does not rebuild the PhysX vehicle the way ApplyPhysicsControl does — so a
-  // friction ramp no longer stalls the car once per step. Writes message and
-  // returns false when the command is rejected. Uniform across the four
-  // wheels: the trigger has no per-wheel value, so the FWD/RWD emulation in
-  // CarlaVehicle::apply_physics does not survive a runtime change.
+  // trigger reaches the tire through
+  // ACarlaWheeledVehicle::SetWheelsFrictionScale, which writes the same
+  // quantity as WheelPhysicsControl::tire_friction but does not rebuild the
+  // PhysX vehicle the way ApplyPhysicsControl does — so a friction ramp no
+  // longer stalls the car once per step. Writes message and returns false when
+  // the command is rejected. Uniform across the four wheels: the trigger has no
+  // per-wheel value, so the FWD/RWD emulation in CarlaVehicle::apply_physics
+  // does not survive a runtime change.
   bool set_tire_friction(float friction, std::string& message);
 
   void apply_drag_coefficient(float drag);

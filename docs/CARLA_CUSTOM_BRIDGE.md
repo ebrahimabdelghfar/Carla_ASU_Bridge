@@ -419,7 +419,7 @@ entirely, by design (see `ros2.namespace` above).
 | `/<namespace>/feedback/steering_angles` | `sensor_msgs/msg/JointState` | Per-wheel joint state, all 4 wheels |
 | `/<namespace>/feedback/motors` | `std_msgs/msg/String` | JSON: per-wheel speed/torque/brake/error state |
 | `/<namespace>/feedback/tire_forces` | `sim_manager_msgs/msg/TireForces` | Per-wheel slip, load, and force, straight from CARLA's own wheel telemetry |
-| `/<namespace>/feedback/vehicle_physics` | `std_msgs/msg/String` | JSON: mass, drag, centre of mass, `road_friction_factor`, and per wheel `tire_friction` (**effective**, i.e. configured x the road surface's coefficient), `tire_friction_configured`, `lat_stiff_value`/`lat_stiff_max_load` (PhysX `mLatStiffY`/`mLatStiffX`), `long_stiff_value`, `damping_rate`, `radius_m`, `max_steer_angle_deg`, `max_brake_torque`. **Latched** (`TRANSIENT_LOCAL`, depth 1) and published only when a value changes, so a late subscriber still gets the current set and a `control/tire_friction` command produces a new message |
+| `/<namespace>/feedback/vehicle_physics` | `std_msgs/msg/String` | JSON: mass, drag, centre of mass, `road_friction_factor`, and per wheel `tire_friction` (**effective**, i.e. configured x the road surface's coefficient), `tire_friction_configured`, `lat_stiff_value`/`lat_stiff_max_load` (PhysX `mLatStiffY`/`mLatStiffX`), `long_stiff_value`, `damping_rate`, `radius_m`, `max_steer_angle_deg`, `max_brake_torque`. **Latched** (`TRANSIENT_LOCAL`, depth 1) and published only when a value changes, so a late subscriber still gets the current set and a `control/set_tire_friction` call produces a new message |
 | `/<namespace>/feedback/vehicle_state` | `std_msgs/msg/String` | JSON: lights, blinkers, active steering mode |
 | `/<namespace>/<camera_name>/rgb` | `sensor_msgs/msg/Image` | Camera stream (RGB or the selected CARLA camera type) |
 | `/<namespace>/<camera_name>/camera_info` | `sensor_msgs/msg/CameraInfo` | Camera intrinsics |
@@ -520,7 +520,7 @@ per-wheel `WheelPhysicsControl`, as JSON. Published from the physics cache
 (no RPC) only when a value changes, on a latched topic, so a consumer can
 rebuild the tire curve the simulator is integrating rather than hardcoding
 numbers that go stale when the vehicle config, the blueprint or a runtime
-`control/tire_friction` command changes them.
+`control/set_tire_friction` call changes them.
 
 ```json
 {
@@ -567,15 +567,15 @@ command. The effective friction, coming from telemetry, is always current.
 | `/<namespace>/control/steering_angle_deg` | `std_msgs/msg/Float32` | Commanded steering angle, degrees (`vehicle_interface` mode; +left / -right) |
 | `/<namespace>/control/brake` | `std_msgs/msg/Bool` | Emergency brake — highest priority, zeroes any pending speed command |
 | `/<namespace>/control/ackermann_drive` | `ackermann_msgs/msg/AckermannDriveStamped` | Ackermann speed/steer command (`ackermann_drive` mode). The ICD binds this to the absolute topic `/drive` by default — see `ros2.topics.control_ackermann`. |
-| `/<namespace>/control/tire_friction` | `std_msgs/msg/Float32` | Runtime override of tire-to-ground friction on every driven wheel, applied via `ApplyPhysicsControl` — no respawn needed. Non-driven wheels stay at the low FWD/RWD emulation value. `feedback/tire_forces` reflects the change immediately, since it reads friction from CARLA rather than from a separately configured value. |
-| `/<namespace>/control/drag_coefficient` | `std_msgs/msg/Float32` | Runtime override of the vehicle's aerodynamic drag coefficient, same mechanism as above |
+| `/<namespace>/control/drag_coefficient` | `std_msgs/msg/Float32` | Runtime override of the vehicle's aerodynamic drag coefficient, applied via `ApplyPhysicsControl` — no respawn needed |
 | `/sim/spawn_point` *(absolute)* | `geometry_msgs/msg/Pose2D` | Teleports the ego vehicle to `x, y, theta` |
 | `/sim/start` *(absolute)* | `std_msgs/msg/Empty` | Resumes simulation ticking |
 | `/sim/stop` *(absolute)* | `std_msgs/msg/Empty` | Pauses simulation ticking |
 
-Both runtime-tuning topics write straight to CARLA's live
-`VehiclePhysicsControl` and are **not** persisted — on restart the
-`vehicle.physics` block in the YAML takes effect again.
+Drag writes straight to CARLA's live `VehiclePhysicsControl` and is **not**
+persisted — on restart the `vehicle.physics` block in the YAML takes effect
+again. Tire friction is a service, not a topic, because it must avoid
+`ApplyPhysicsControl` entirely: see below.
 
 ### Services
 
@@ -595,6 +595,40 @@ Both runtime-tuning topics write straight to CARLA's live
 | `/<namespace>/control/lights/brake_lights` | `std_srvs/srv/SetBool` | Toggle brake lights |
 | `/<namespace>/control/force_manual_control` | `std_srvs/srv/SetBool` | Override ROS 2 control and force pygame manual control |
 | `/<namespace>/control/set_steering_mode` | `carla_msgs/srv/SetSteeringMode` | Switch between front/rear/four-wheel steering modes |
+| `/<namespace>/control/set_tire_friction` | `sim_manager_msgs/srv/SetTireFriction` | Runtime override of tire-to-ground friction, uniform across the four wheels |
+
+#### Runtime tire friction
+
+`ApplyPhysicsControl` is the obvious way to change `tire_friction` on a live
+vehicle, and it is the wrong one. `ACarlaWheeledVehicle::ApplyVehiclePhysicsControl`
+ends in `Movement->RecreatePhysicsState()`, which destroys and rebuilds the
+PhysX vehicle: the rigid body's velocity, the wheel rotation and the engine
+state all reset. Measured here, a car at 6 m/s reads exactly 0.00 m/s for about
+22 ticks afterwards. Restoring the sampled velocity right after the write cuts
+that to a single-tick dip of roughly 5%, which is tolerable for a one-off
+change and not for a ramp — a friction decay published at 30 Hz is 30 rebuilds
+a second, and the car stops and restarts on every one.
+
+The service instead respawns a `static.trigger.friction` actor around the ego.
+`AFrictionTrigger::OnTriggerBeginOverlap` reaches the tire through
+`ACarlaWheeledVehicle::SetWheelsFrictionScale`, which writes
+`TireConfig->SetFrictionScale()` per wheel — the same quantity
+`WheelPhysicsControl::tire_friction` carries, with no physics rebuild behind
+it. Consequences worth knowing:
+
+- **Uniform across the four wheels.** The trigger has one `friction`
+  attribute, so the FWD/RWD emulation `vehicle.drive_mode` sets up at spawn
+  (non-driven wheels at 0.1) does not survive a runtime change. The service
+  logs a warning once when `drive_mode` is not `AWD`.
+- **Destroy before spawn.** A live trigger restores the friction it replaced
+  when the vehicle leaves it, so the old trigger is torn down before the new
+  one goes in, never the other way round.
+- **The box is 1 km on a side.** The trigger reverts friction on end overlap,
+  so it has to be larger than any drive the scenario contains.
+- `feedback/tire_forces` `tire_friction` reports the **effective** value
+  (0.70x the commanded one on this map — the road surface coefficient is
+  folded in server-side), which is the value to use for friction-ellipse
+  checks.
 
 ---
 

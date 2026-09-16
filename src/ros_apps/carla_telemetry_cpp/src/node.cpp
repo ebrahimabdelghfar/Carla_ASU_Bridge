@@ -293,6 +293,7 @@ void CarlaTelemetryNode::setup_vehicle() {
 
   backend_ = std::make_unique<CarlaROS2Backend>(
       this, topics, services, qos_cfg, ns, entity_cb_group_, physics_cb_group_);
+  backend_->set_vehicle(vehicle_.get());
   backend_->set_vehicle_actor(vehicle_->actor());
 
   auto ctrl = config_["control"];
