@@ -2,6 +2,7 @@
 
 #include <carla/actors/ActorBlueprint.h>
 #include <carla/actors/BlueprintLibrary.h>
+#include <carla/client/ActorList.h>
 #include <carla/client/World.h>
 #include <carla/client/WorldSnapshot.h>
 #include <carla/rpc/VehicleControl.h>
@@ -1190,7 +1191,7 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
     message = "friction must be finite and >= 0.";
     return false;
   }
-  if (!vehicle_actor_ || !vehicle_) {
+  if (!vehicle_actor_) {
     message = "No vehicle.";
     return false;
   }
@@ -1201,13 +1202,24 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
     return true;
   }
 
-  auto& world = vehicle_->world();
+  auto world = vehicle_actor_->GetWorld();
   auto library = world.GetBlueprintLibrary();
   const auto* definition = library->Find(kFrictionTriggerBlueprint);
   if (definition == nullptr) {
     message = std::string(kFrictionTriggerBlueprint) + " is not available.";
     return false;
   }
+  if (!friction_triggers_swept_) {
+    for (auto actor : *world.GetActors()->Filter(kFrictionTriggerBlueprint)) {
+      try {
+        actor->Destroy();
+      } catch (...) {
+      }
+    }
+    friction_trigger_ = nullptr;
+    friction_triggers_swept_ = true;
+  }
+
   carla::actors::ActorBlueprint blueprint = *definition;
   blueprint.SetAttribute("friction", std::to_string(friction));
   const std::string extent = std::to_string(kFrictionTriggerExtentCm);
@@ -1242,8 +1254,8 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
                      "no longer holds.",
                      drive_mode_.c_str());
   }
-  RCLCPP_DEBUG(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
-               friction);
+  RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
+              friction);
   message = "Applied.";
   return true;
 }
@@ -1681,6 +1693,20 @@ void CarlaROS2Backend::carla_rpy_to_ros_quaternion(double r, double p, double y,
 }
 
 void CarlaROS2Backend::shutdown() {
+  // The trigger is a world actor: releasing the client-side pointer leaves it
+  // in the map. Node::shutdown calls this while the ego is still alive, so the
+  // overlap it ends here restores friction on a live vehicle.
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  if (friction_trigger_) {
+    try {
+      friction_trigger_->Destroy();
+    } catch (...) {
+    }
+    friction_trigger_ = nullptr;
+  }
+  applied_tire_friction_ = std::numeric_limits<float>::quiet_NaN();
+  road_friction_factor_ = std::numeric_limits<double>::quiet_NaN();
+  physics_cached_ = false;
   RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] Shutdown complete.");
 }
 

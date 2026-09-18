@@ -330,6 +330,9 @@ class CarlaROS2Backend {
   // The static.trigger.friction actor currently holding the commanded grip.
   // Replaced, not edited: the friction is a spawn attribute of the blueprint.
   carla::SharedPtr<carla::client::Actor> friction_trigger_;
+  // Cleared once per bridge configure: a run that was killed leaves its trigger
+  // in the map, and the map outlives the process.
+  bool friction_triggers_swept_ = false;
 
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
