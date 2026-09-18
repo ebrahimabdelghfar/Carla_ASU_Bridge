@@ -66,6 +66,12 @@ find_library(LIBRECAST NAMES Recast PATHS ${CARLA_ROOT}/PythonAPI/carla/dependen
 find_library(LIBDETOUR  NAMES Detour  PATHS ${CARLA_ROOT}/PythonAPI/carla/dependencies/lib NO_DEFAULT_PATH)
 find_library(LIBDETOUR_CROWD NAMES DetourCrowd PATHS ${CARLA_ROOT}/PythonAPI/carla/dependencies/lib NO_DEFAULT_PATH)
 
+if(NOT LIBCARLA_CLIENT OR NOT LIBRPC OR NOT LIBRECAST OR NOT LIBDETOUR OR NOT LIBDETOUR_CROWD)
+  message(FATAL_ERROR
+    "CARLA client libraries not found under ${CARLA_ROOT}/PythonAPI/carla/dependencies/lib.\n"
+    "They are tracked in git — the clone is incomplete.")
+endif()
+
 # Boost (use CARLA's bundled Boost 1.90 — static to avoid runtime .so issues)
 set(CARLA_BOOST_ROOT ${CARLA_ROOT}/Build/boost-1.90.0-c10-install)
 if(NOT EXISTS "${CARLA_BOOST_ROOT}/lib/libboost_filesystem.a")
