@@ -1254,8 +1254,20 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
                      "no longer holds.",
                      drive_mode_.c_str());
   }
-  RCLCPP_INFO(node_->get_logger(), "[CarlaROS2Backend] tire_friction = %.3f.",
-              friction);
+  // PhysX scales the trigger's friction by the road surface coefficient, so
+  // the commanded value is not the one the tires run at.
+  if (std::isfinite(road_friction_factor_)) {
+    RCLCPP_INFO(node_->get_logger(),
+                "[CarlaROS2Backend] tire_friction = %.3f commanded, %.3f "
+                "effective (road factor %.2f).",
+                friction, friction * road_friction_factor_,
+                road_friction_factor_);
+  } else {
+    RCLCPP_INFO(node_->get_logger(),
+                "[CarlaROS2Backend] tire_friction = %.3f commanded (road "
+                "factor not measured yet).",
+                friction);
+  }
   message = "Applied.";
   return true;
 }
