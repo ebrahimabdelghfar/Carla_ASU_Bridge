@@ -842,6 +842,12 @@ class HUD(object):
         t = world.player.get_transform()
         v = world.player.get_velocity()
         c = world.player.get_control()
+        try:
+            telemetry = world.player.get_telemetry_data()
+            tire_friction = [wheel.tire_friction for wheel in telemetry.wheels]
+            mu_line = 'Mu:      ' + ' '.join('%4.2f' % value for value in tire_friction)
+        except RuntimeError:
+            mu_line = 'Mu:      unavailable'
         compass = world.imu_sensor.compass
         heading = 'N' if compass > 270.5 or compass < 89.5 else ''
         heading += 'S' if 90.5 < compass < 269.5 else ''
@@ -861,6 +867,7 @@ class HUD(object):
             'Simulation time: % 12s' % datetime.timedelta(seconds=int(self.simulation_time)),
             '',
             'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)),
+            mu_line,
             u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
             'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
             'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),
