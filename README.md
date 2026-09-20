@@ -27,7 +27,7 @@ make download_carla_assets
 ## Install The CARLA API
 
 ```bash
-pip3 thirdparty_lib/carla/carla-0.9.16-cp310-cp310-linux_x86_64.whl
+pip3 install thirdparty_lib/carla/carla-0.9.16-cp310-cp310-linux_x86_64.whl
 ```
 
 ## Build The Workspace
@@ -40,8 +40,8 @@ make setup_ros2_workspace
 
 ```bash
 make launch_carla_sim && \
-ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node configure && \
-ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node activate
+ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 1 && \
+ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 3
 ```
 
 # Video
@@ -66,7 +66,7 @@ If you use this simulator in your research or project, please cite it:
 
 Plain text:
 
-> E. Abdelghfar, "Formula AI Simulator: A CARLA-based Simulation Bridge for
+> Ebrahim Abdelghfar, "Formula AI Simulator: A CARLA-based Simulation Bridge for
 > Autonomous Formula Student Vehicles," 2026. [Online]. Available:
 > https://github.com/ebrahimabdelghfar/Carla_ASU_Bridge
 
