@@ -1,0 +1,7 @@
+# Set the PhysX tire stiffness of all four wheels of the ego vehicle at runtime.
+# A field left at 0 keeps its current value.
+float32 lat_stiff_value   # lateral stiffness per unit lateral slip (mLatStiffY)
+float32 long_stiff_value  # per unit gravity (mLongitudinalStiffnessPerUnitGravity)
+---
+bool success
+string message

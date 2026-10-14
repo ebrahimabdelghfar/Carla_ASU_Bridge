@@ -5,6 +5,8 @@
 #include <carla/client/ActorList.h>
 #include <carla/client/World.h>
 #include <carla/client/WorldSnapshot.h>
+#include <carla/client/detail/Simulator.h>
+#include <carla/rpc/Command.h>
 #include <carla/rpc/VehicleControl.h>
 #include <carla/rpc/VehicleLightState.h>
 
@@ -12,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 #include "carla_telemetry/perf_monitor.hpp"
 #include "carla_telemetry/sensors/battery.hpp"
@@ -38,6 +41,9 @@ constexpr const char* kFrictionTriggerBlueprint = "static.trigger.friction";
 // as soon as the vehicle leaves it, so the box has to outlast any drive: 1 km
 // covers every track in use here.
 constexpr float kFrictionTriggerExtentCm = 100000.0f;
+
+// Minimum spacing of runtime stiffness writes, each a PhysX vehicle rebuild.
+constexpr auto kStiffnessWriteInterval = std::chrono::milliseconds(100);
 
 // Used only if the physics control reports no wheels; matches the configured
 // vehicle.physics.wheels[].radius.
@@ -214,6 +220,17 @@ CarlaROS2Backend::CarlaROS2Backend(
           const sim_manager_msgs::srv::SetTireFriction::Request::SharedPtr req,
           sim_manager_msgs::srv::SetTireFriction::Response::SharedPtr resp) {
         resp->success = set_tire_friction(req->friction, resp->message);
+      },
+      rmw_qos_profile_services_default, physics_cb_group_);
+  tire_stiffness_srv_ = node_->create_service<
+      sim_manager_msgs::srv::SetTireStiffness>(
+      topic(get_or(services_cfg_, "set_tire_stiffness",
+                   "control/set_tire_stiffness")),
+      [this](
+          const sim_manager_msgs::srv::SetTireStiffness::Request::SharedPtr req,
+          sim_manager_msgs::srv::SetTireStiffness::Response::SharedPtr resp) {
+        resp->success = set_tire_stiffness(
+            req->lat_stiff_value, req->long_stiff_value, resp->message);
       },
       rmw_qos_profile_services_default, physics_cb_group_);
 
@@ -1176,14 +1193,31 @@ void CarlaROS2Backend::apply_physics_preserving_motion(
     carla::client::Vehicle& v, const carla::rpc::VehiclePhysicsControl& pc) {
   // ApplyPhysicsControl recreates the vehicle's physics state, which zeroes
   // the rigid body's linear and angular velocity: measured on 0.9.16, a car at
-  // 6 m/s reads exactly 0.00 m/s for ~22 ticks afterwards. Sampling the motion
-  // first and writing it straight back turns that dead stop into a single-tick
-  // dip of about 5%, so grip can be retuned while driving.
-  const auto linear = v.GetVelocity();
-  const auto angular = v.GetAngularVelocity();
-  v.ApplyPhysicsControl(pc);
-  v.SetTargetVelocity(linear);
-  v.SetTargetAngularVelocity(angular);
+  // 6 m/s reads exactly 0.00 m/s for ~22 ticks afterwards. One batch runs all
+  // three commands in a single game-thread call, so no tick can land between
+  // the rebuild and the restore. The wheels still restart at zero spin, and
+  // spinning them back up takes a fixed fraction of the forward momentum
+  // during the next frame. A one-frame push returns it. Restoring a higher
+  // velocity instead does not work: the speed controller sees the overshoot
+  // and brakes while the wheels are still stopped, locking them.
+  const auto velocity = v.GetVelocity();
+  const auto forward = v.GetTransform().GetForwardVector();
+  const float along =
+      velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
+  auto world = v.GetWorld();
+  const auto frame = world.GetSettings().fixed_delta_seconds;
+  const float push = frame ? static_cast<float>(rebuild_speed_compensation_ *
+                                                pc.mass * along / *frame)
+                           : 0.0f;  // N
+
+  namespace cmd = carla::rpc;
+  const auto id = v.GetId();
+  world.GetEpisode().Lock()->ApplyBatchSync(
+      {cmd::Command::ApplyVehiclePhysicsControl(id, pc),
+       cmd::Command::ApplyTargetVelocity(id, velocity),
+       cmd::Command::ApplyTargetAngularVelocity(id, v.GetAngularVelocity()),
+       cmd::Command::ApplyForce(id, forward * push)},
+      false);
 }
 
 bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
@@ -1268,6 +1302,56 @@ bool CarlaROS2Backend::set_tire_friction(float friction, std::string& message) {
                 "factor not measured yet).",
                 friction);
   }
+  message = "Applied.";
+  return true;
+}
+
+bool CarlaROS2Backend::set_tire_stiffness(float lat, float lon,
+                                          std::string& message) {
+  if (!std::isfinite(lat) || !std::isfinite(lon) || lat < 0.0f || lon < 0.0f) {
+    message = "stiffness must be finite and >= 0.";
+    return false;
+  }
+  auto v = boost::dynamic_pointer_cast<carla::client::Vehicle>(vehicle_actor_);
+  if (!v) {
+    message = "No vehicle.";
+    return false;
+  }
+
+  // Every write rebuilds the PhysX vehicle and costs a brief dip in speed, so
+  // a ramp is paced here instead of rebuilding on every sample. Sleeping
+  // back-pressures the caller; the service has its own callback group.
+  std::this_thread::sleep_until(last_stiffness_write_ +
+                                kStiffnessWriteInterval);
+  std::lock_guard<std::mutex> lk(physics_mutex_);
+  // Re-read, not the cache: the friction trigger rewrites the tire config
+  // behind it, and writing a stale copy back would undo the commanded grip.
+  auto pc = v->GetPhysicsControl();
+  bool changed = false;
+  for (auto& w : pc.wheels) {
+    if (lat > 0.0f && std::fabs(w.lat_stiff_value - lat) > kFrictionEpsilon) {
+      w.lat_stiff_value = lat;
+      changed = true;
+    }
+    if (lon > 0.0f && std::fabs(w.long_stiff_value - lon) > kFrictionEpsilon) {
+      w.long_stiff_value = lon;
+      changed = true;
+    }
+  }
+  if (!changed) {
+    message = "Already applied.";
+    return true;
+  }
+  apply_physics_preserving_motion(*v, pc);
+  last_stiffness_write_ = std::chrono::steady_clock::now();
+  cached_physics_ = pc;
+  physics_cached_ = true;
+
+  const auto& w = pc.wheels.front();
+  RCLCPP_INFO(node_->get_logger(),
+              "[CarlaROS2Backend] lat_stiff_value = %.3f, long_stiff_value = "
+              "%.3f",
+              w.lat_stiff_value, w.long_stiff_value);
   message = "Applied.";
   return true;
 }

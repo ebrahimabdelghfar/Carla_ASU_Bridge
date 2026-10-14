@@ -139,6 +139,13 @@ vehicle:
     mass: 240.0              # kg
     drag_coefficient: 0.426     # aerodynamic Cd
 
+    # A runtime physics write (set_tire_stiffness, drag_coefficient) rebuilds
+    # the PhysX vehicle with the wheels at zero spin, and spinning them back
+    # up costs a fixed fraction of the forward speed. The write pushes the car
+    # forward for one frame by this fraction of its speed to cancel it.
+    # Measured 0.056 on this vehicle (a 5.6% drop per write); 0 disables.
+    rebuild_speed_compensation: 0.056
+
     # Whether to override the blueprint's default center of mass
     override_center_of_mass: false
     # Centre of mass offset from actor origin (metres, CARLA frame).
@@ -777,3 +784,11 @@ ros2:
     #   reports CARLA's own per-wheel forces, so they follow the commanded
     #   friction with no second tire model to keep in sync.
     set_tire_friction: "control/set_tire_friction"
+
+    # Tire stiffness: /sim/control/set_tire_stiffness
+    #   sim_manager_msgs/SetTireStiffness (lat_stiff_value, long_stiff_value;
+    #   0 keeps the current value), all four wheels. CARLA has no trigger for
+    #   stiffness, so this goes through ApplyPhysicsControl with the vehicle's
+    #   velocity restored in the same batch. Wheel spin still restarts from
+    #   zero on each write, so writes are paced to at most one per 100 ms.
+    set_tire_stiffness: "control/set_tire_stiffness"

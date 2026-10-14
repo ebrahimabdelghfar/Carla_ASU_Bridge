@@ -68,6 +68,7 @@ from carla import ColorConverter as cc
 import argparse
 import collections
 import datetime
+import json
 import logging
 import math
 import os
@@ -79,6 +80,8 @@ import threading
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import String
 from std_srvs.srv import SetBool
 
 try:
@@ -452,10 +455,13 @@ class KeyboardControl(object):
             namespace = config.get('ros2', {}).get('namespace', 'sim')
             srv_name = config.get('ros2', {}).get('services', {}).get('force_manual_control', 'control/force_manual_control')
             full_srv_name = f'/{namespace}/{srv_name}'
+            physics_topic = config.get('ros2', {}).get('topics', {}).get('feedback_vehicle_physics', 'feedback/vehicle_physics')
+            physics_topic = f'/{namespace}/{physics_topic}'
             self._max_velocity_ms = config.get('control', {}).get('max_velocity_kmh', 0.0) / 3.6
         except Exception as e:
             print(f"Failed to load config for ROS service, using default: {e}")
             full_srv_name = '/sim/control/force_manual_control'
+            physics_topic = '/sim/feedback/vehicle_physics'
             self._max_velocity_ms = 0.0
 
         if not rclpy.ok():
@@ -468,6 +474,11 @@ class KeyboardControl(object):
         self._ros_node = rclpy.create_node('manual_control_keyboard_node')
         from std_srvs.srv import SetBool
         self._force_manual_client = self._ros_node.create_client(SetBool, full_srv_name)
+        # Latched by the bridge, so the HUD gets the current set on connect.
+        self._ros_node.create_subscription(
+            String, physics_topic,
+            lambda msg: world.hud.set_vehicle_physics(msg.data),
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -824,9 +835,19 @@ class HUD(object):
         self._show_info = True
         self._info_text = []
         self._server_clock = pygame.time.Clock()
+        self._stiffness_lines = ['Lat k:   unavailable', 'Long k:  unavailable']
 
         self._show_ackermann_info = False
         self._ackermann_control = carla.VehicleAckermannControl()
+
+    def set_vehicle_physics(self, data):
+        try:
+            wheels = json.loads(data)['wheels']
+            self._stiffness_lines = [
+                'Lat k:   ' + ' '.join('%4.1f' % w['lat_stiff_value'] for w in wheels),
+                'Long k:  ' + ' '.join('%4.0f' % w['long_stiff_value'] for w in wheels)]
+        except (ValueError, KeyError):
+            pass
 
     def on_world_tick(self, world_snapshot):
         """Gets information from the world at every tick"""
@@ -868,6 +889,7 @@ class HUD(object):
             '',
             'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)),
             mu_line,
+            *self._stiffness_lines,
             u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
             'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
             'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),

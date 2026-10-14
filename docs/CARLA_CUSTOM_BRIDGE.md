@@ -596,6 +596,7 @@ again. Tire friction is a service, not a topic, because it must avoid
 | `/<namespace>/control/force_manual_control` | `std_srvs/srv/SetBool` | Override ROS 2 control and force pygame manual control |
 | `/<namespace>/control/set_steering_mode` | `carla_msgs/srv/SetSteeringMode` | Switch between front/rear/four-wheel steering modes |
 | `/<namespace>/control/set_tire_friction` | `sim_manager_msgs/srv/SetTireFriction` | Runtime override of tire-to-ground friction, uniform across the four wheels |
+| `/<namespace>/control/set_tire_stiffness` | `sim_manager_msgs/srv/SetTireStiffness` | Runtime override of `lat_stiff_value` / `long_stiff_value` on all four wheels (0 keeps a field). Goes through `ApplyPhysicsControl` in one batch with the velocity restore and a one-frame push (`vehicle.physics.rebuild_speed_compensation`) that cancels the wheel spin-up loss; paced to one write per 100 ms |
 
 #### Runtime tire friction
 

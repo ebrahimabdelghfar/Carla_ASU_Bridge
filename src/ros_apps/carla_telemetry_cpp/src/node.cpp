@@ -335,6 +335,8 @@ void CarlaTelemetryNode::setup_vehicle() {
   // Which wheels the drivetrain turns — used when tire friction is changed at
   // runtime so the non-driven wheels keep their FWD/RWD emulation friction.
   backend_->set_drive_mode(veh["drive_mode"].as<std::string>("AWD"));
+  backend_->set_rebuild_speed_compensation(
+      phys["rebuild_speed_compensation"].as<double>(0.0));
 }
 
 void CarlaTelemetryNode::setup_pedestrians() {

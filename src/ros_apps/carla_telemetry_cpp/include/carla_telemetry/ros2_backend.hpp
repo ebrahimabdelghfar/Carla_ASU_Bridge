@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -42,6 +43,7 @@
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sim_manager_msgs/msg/tire_forces.hpp>
 #include <sim_manager_msgs/srv/set_tire_friction.hpp>
+#include <sim_manager_msgs/srv/set_tire_stiffness.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/float32.hpp>
@@ -148,6 +150,12 @@ class CarlaROS2Backend {
     drive_mode_ = drive_mode;
   }
 
+  // Mirrors vehicle.physics.rebuild_speed_compensation, see
+  // apply_physics_preserving_motion.
+  void set_rebuild_speed_compensation(double gain) {
+    rebuild_speed_compensation_ = gain;
+  }
+
   // Camera / LiDAR registration
   void register_camera(const std::string& name,
                        const std::string& topic_rgb = "",
@@ -235,6 +243,7 @@ class CarlaROS2Backend {
   double max_steer_deg_ = 16.0;
   ControlModeConfig control_mode_;
   std::string drive_mode_ = "AWD";  // mirrors vehicle.drive_mode
+  double rebuild_speed_compensation_ = 0.0;
 
   // PID states
   struct PIDState {
@@ -334,6 +343,9 @@ class CarlaROS2Backend {
   // in the map, and the map outlives the process.
   bool friction_triggers_swept_ = false;
 
+  // When the last stiffness write landed; set_tire_stiffness paces on it.
+  std::chrono::steady_clock::time_point last_stiffness_write_;
+
   std::once_flag light_once_;
   std::atomic<uint32_t> light_state_{0};
   std::mutex light_set_mutex_;
@@ -366,12 +378,19 @@ class CarlaROS2Backend {
   // does not survive a runtime change.
   bool set_tire_friction(float friction, std::string& message);
 
+  // Set lat_stiff_value / long_stiff_value on all four wheels; 0 keeps the
+  // current value. Unlike friction there is no trigger for stiffness, so this
+  // goes through apply_physics_preserving_motion, paced to one write per
+  // kStiffnessWriteInterval. Writes message and returns false when rejected.
+  bool set_tire_stiffness(float lat, float lon, std::string& message);
+
   void apply_drag_coefficient(float drag);
 
   // Write a physics control without the vehicle losing its motion: CARLA
   // recreates the physics state on every ApplyPhysicsControl and that zeroes
   // the rigid body's velocity, so the sampled linear and angular velocity are
-  // restored immediately after the write. Caller holds physics_mutex_.
+  // restored in the same batch, before the server can tick in between. Caller
+  // holds physics_mutex_.
   void apply_physics_preserving_motion(
       carla::client::Vehicle& v, const carla::rpc::VehiclePhysicsControl& pc);
   void ensure_light_init(carla::client::Vehicle& v);
@@ -470,6 +489,8 @@ class CarlaROS2Backend {
       set_steering_mode_srv_;
   rclcpp::Service<sim_manager_msgs::srv::SetTireFriction>::SharedPtr
       tire_friction_srv_;
+  rclcpp::Service<sim_manager_msgs::srv::SetTireStiffness>::SharedPtr
+      tire_stiffness_srv_;
 
   // Group owned by the node (created once, before add_node). Every
   // subscription/service here uses it, so the node's DEFAULT group stays free
