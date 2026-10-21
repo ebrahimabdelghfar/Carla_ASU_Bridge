@@ -70,7 +70,7 @@ make setup_docker
 ```
 
 This builds the image, starts the `asurt_carla_simulator` container in the
-background and waits until its first-run initialization has finished. The
+background and waits until the entrypoint has built the ROS 2 workspace. The
 container uses host networking, so ROS 2 topics are visible on the host and on
 the LAN (CycloneDDS config: [docker/cyclonedds.xml](docker/cyclonedds.xml)).
 
@@ -89,7 +89,11 @@ make exec_docker_compose
 This also runs `xhost +local:root` so the container can open windows on the
 host display. Every command below runs inside that shell, from `/asurt`.
 
-## Build the Workspace (inside the container)
+## Rebuild After Editing Sources (inside the container)
+
+The entrypoint builds the workspace once, on the container's first start.
+Sources are mounted from the host but the build output is not, so rebuild after
+changing code:
 
 ```bash
 make setup_ros2_workspace
