@@ -44,6 +44,80 @@ ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 1 && \
 ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 3
 ```
 
+# Run With Docker
+
+The image is based on ROS 2 Humble (`osrf/ros:humble-desktop`) and ships the
+CARLA Python API, CycloneDDS and all build dependencies. The simulator binaries,
+sources and config are bind-mounted from the host, so edits on the host are
+visible inside the container without rebuilding the image.
+
+## Prerequisites
+
+- Docker with the Compose plugin (`docker compose`) or `docker-compose`.
+- An NVIDIA GPU with the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+  installed (the container uses `runtime: nvidia`).
+- The simulator assets on the host:
+
+  ```bash
+  make download_carla_assets
+  ```
+
+## Build and Start the Container
+
+```bash
+make setup_docker
+```
+
+This builds the image, starts the `asurt_carla_simulator` container in the
+background and waits until its first-run initialization has finished. The
+container uses host networking, so ROS 2 topics are visible on the host and on
+the LAN (CycloneDDS config: [docker/cyclonedds.xml](docker/cyclonedds.xml)).
+
+To use a specific GPU instead of all of them:
+
+```bash
+GPUS=0 make setup_docker
+```
+
+## Open a Shell in the Container
+
+```bash
+make exec_docker_compose
+```
+
+This also runs `xhost +local:root` so the container can open windows on the
+host display. Every command below runs inside that shell, from `/asurt`.
+
+## Build the Workspace (inside the container)
+
+```bash
+make setup_ros2_workspace
+source install/ros_apps/setup.bash
+```
+
+## Run the Simulator (inside the container)
+
+```bash
+make launch_carla_sim
+```
+
+Then, from a second container shell (`make exec_docker_compose`), activate the
+telemetry node:
+
+```bash
+ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 1 && \
+ros2 lifecycle set /ASU_RT_Carla_Telemetry_Node 3
+```
+
+Use `make launch_carla_sim_low` for lower rendering quality on weaker GPUs.
+
+## Stop the Container
+
+```bash
+make down_docker_compose
+```
+
 # Video
 
 
