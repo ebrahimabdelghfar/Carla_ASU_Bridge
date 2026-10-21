@@ -95,7 +95,7 @@ vehicle:
   role_name: "hero"
 
   # Actor generation filter: "1", "2", or "All"
-  generation: "2"
+  generation: "All"
 
   # null → random recommended color; or "R,G,B" string e.g. "255,0,0"
   color: null
@@ -134,7 +134,7 @@ vehicle:
   # Engine & Physics
   physics:
     # Set to false to skip apply_physics_control() and keep blueprint defaults.
-    enabled: true
+    enabled: false
 
     mass: 240.0              # kg
     drag_coefficient: 0.426     # aerodynamic Cd
